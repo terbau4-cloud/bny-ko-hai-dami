@@ -1,13 +1,25 @@
 import React from 'react';
 import { UserProfile } from '../types';
-import { Wallet, CreditCard, Mail, User } from 'lucide-react';
+import { Wallet, CreditCard, Mail, User, Phone, LogOut } from 'lucide-react';
+import { signOut } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 interface Props {
   profile: UserProfile;
-  onUpdateProfile: (updated: Partial<UserProfile>) => void;
+  onUpdateProfile?: (updated: Partial<UserProfile>) => void;
+  onSignOut?: () => void;
 }
 
-export const ProfileTab: React.FC<Props> = ({ profile }) => {
+export const ProfileTab: React.FC<Props> = ({ profile, onSignOut }) => {
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      if (onSignOut) onSignOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-24 max-w-md mx-auto">
       {/* Profile Card */}
@@ -24,8 +36,16 @@ export const ProfileTab: React.FC<Props> = ({ profile }) => {
           {/* Email */}
           <div className="flex items-center justify-center gap-1.5 text-sm font-medium text-slate-500 mt-1">
             <Mail size={15} className="text-slate-400" />
-            <span>{profile.email || 'mandipmahato717@gmail.com'}</span>
+            <span>{profile.email || 'user@example.com'}</span>
           </div>
+
+          {/* WhatsApp if available */}
+          {profile.whatsapp && (
+            <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full w-fit mx-auto mt-2 border border-emerald-200">
+              <Phone size={13} />
+              <span>WhatsApp: {profile.whatsapp}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -52,10 +72,22 @@ export const ProfileTab: React.FC<Props> = ({ profile }) => {
           <div>
             <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Spent</div>
             <div className="text-2xl font-black text-slate-900 mt-0.5">
-              RS {profile.totalSpent || 1200}
+              RS {profile.totalSpent || 0}
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Sign Out Action Button */}
+      <div className="pt-2">
+        <button
+          onClick={handleSignOut}
+          id="profile-signout-btn"
+          className="w-full py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-sm rounded-2xl border border-rose-200 flex items-center justify-center gap-2 transition-all cursor-pointer"
+        >
+          <LogOut size={18} />
+          <span>Sign Out of Account</span>
+        </button>
       </div>
     </div>
   );

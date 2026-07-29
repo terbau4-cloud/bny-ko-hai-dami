@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TabType, Game, Transaction, UserProfile, TopupProduct } from './types';
 import { INITIAL_GAMES, INITIAL_TRANSACTIONS, INITIAL_PROFILE } from './data/initialData';
 import { Header } from './components/Header';
@@ -8,6 +8,21 @@ import { WalletTab } from './components/WalletTab';
 import { HistoryTab } from './components/HistoryTab';
 import { ProfileTab } from './components/ProfileTab';
 import { TopupDetailModal } from './components/TopupDetailModal';
+import { AuthModal } from './components/AuthModal';
+
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  addDoc,
+  doc,
+  getDoc,
+  updateDoc,
+  setDoc,
+} from 'firebase/firestore';
+import { auth, db } from './lib/firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -16,11 +31,126 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
+  // Auth States
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
+
+  // Listen for Firebase Auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthUser(user);
+      if (user) {
+        // Fetch or sync user profile from Firestore
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userDocRef);
+
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            setProfile({
+              uid: user.uid,
+              name: data.fullName || user.displayName || 'Benny Gamer',
+              email: data.email || user.email || '',
+              whatsapp: data.whatsapp || '',
+              avatar: '👤',
+              level: 1,
+              coins: 100,
+              walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 850,
+              totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
+              totalGamesPlayed: 0,
+              soundEnabled: true,
+              themeColor: 'purple',
+            });
+          } else {
+            // Create user profile if missing
+            const initProf: UserProfile = {
+              uid: user.uid,
+              name: user.displayName || 'Benny Gamer',
+              email: user.email || '',
+              whatsapp: '',
+              avatar: '👤',
+              level: 1,
+              coins: 100,
+              walletBalance: 850,
+              totalSpent: 0,
+              totalGamesPlayed: 0,
+              soundEnabled: true,
+              themeColor: 'purple',
+            };
+            setProfile(initProf);
+            await setDoc(userDocRef, {
+              uid: user.uid,
+              fullName: initProf.name,
+              email: initProf.email,
+              whatsapp: '',
+              walletBalance: 850,
+              totalSpent: 0,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching user profile doc:', err);
+        }
+
+        // Listen to Firestore transactions for this user
+        const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
+        const unsubscribeTx = onSnapshot(
+          q,
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
+                const data = docSnap.data();
+                return {
+                  id: docSnap.id,
+                  orderId: data.orderId,
+                  type: data.type || 'purchase',
+                  amount: data.amount || 0,
+                  date: data.date || 'Today',
+                  time: data.time || '',
+                  status: data.status || 'Pending',
+                  description: data.description || '',
+                  gameTitle: data.gameTitle,
+                  gameIcon: data.gameIcon,
+                  gameCoverImg: data.gameCoverImg,
+                  productName: data.productName,
+                  productPrice: data.productPrice,
+                  quantity: data.quantity,
+                  playerId: data.playerId,
+                };
+              });
+              setTransactions(loadedTxs);
+            } else {
+              setTransactions(INITIAL_TRANSACTIONS);
+            }
+          },
+          (err) => {
+            console.error('Firestore transactions snapshot error:', err);
+          }
+        );
+
+        return () => unsubscribeTx();
+      } else {
+        setTransactions(INITIAL_TRANSACTIONS);
+        setProfile(INITIAL_PROFILE);
+      }
+      setAuthChecking(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Handle Auth Success from AuthModal
+  const handleAuthSuccess = (newProfile: UserProfile) => {
+    setProfile(newProfile);
+    setActiveTab('home');
+  };
+
   // Handle Wallet Top-Up Deposit
-  const handleAddTransaction = (amount: number, screenshotUrl: string) => {
+  const handleAddTransaction = async (amount: number, screenshotUrl: string) => {
+    const orderId = `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
-      orderId: `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`,
+      orderId,
       type: 'deposit',
       amount,
       date: 'Just Now',
@@ -31,14 +161,41 @@ export default function App() {
     };
 
     setTransactions((prev) => [newTx, ...prev]);
+
+    const updatedBalance = profile.walletBalance + amount;
     setProfile((prev) => ({
       ...prev,
-      walletBalance: prev.walletBalance + amount,
+      walletBalance: updatedBalance,
     }));
+
+    // Firestore sync if user is logged in
+    if (authUser) {
+      try {
+        await addDoc(collection(db, 'transactions'), {
+          userId: authUser.uid,
+          orderId,
+          type: 'deposit',
+          amount,
+          date: 'Just Now',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: 'Approved',
+          description: 'Wallet Deposit via QR Payment',
+          screenshotUrl,
+          createdAt: new Date().toISOString(),
+        });
+
+        const userDocRef = doc(db, 'users', authUser.uid);
+        await updateDoc(userDocRef, {
+          walletBalance: updatedBalance,
+        });
+      } catch (err) {
+        console.error('Error adding deposit to Firestore:', err);
+      }
+    }
   };
 
   // Handle Top-Up Purchase Order
-  const handlePurchaseOrder = (orderData: {
+  const handlePurchaseOrder = async (orderData: {
     game: Game;
     product: TopupProduct;
     quantity: number;
@@ -50,7 +207,7 @@ export default function App() {
 
     const newOrderTx: Transaction = {
       id: `tx_order_${Date.now()}`,
-      orderId, // e.g. BNY-84920183
+      orderId,
       type: 'purchase',
       amount: totalAmount,
       date: 'Today',
@@ -68,12 +225,46 @@ export default function App() {
 
     setTransactions((prev) => [newOrderTx, ...prev]);
 
-    // Deduct total price from wallet & add to totalSpent
+    const updatedBalance = Math.max(0, profile.walletBalance - totalAmount);
+    const updatedSpent = (profile.totalSpent || 0) + totalAmount;
+
     setProfile((prev) => ({
       ...prev,
-      walletBalance: Math.max(0, prev.walletBalance - totalAmount),
-      totalSpent: prev.totalSpent + totalAmount,
+      walletBalance: updatedBalance,
+      totalSpent: updatedSpent,
     }));
+
+    // Firestore sync if user is logged in
+    if (authUser) {
+      try {
+        await addDoc(collection(db, 'transactions'), {
+          userId: authUser.uid,
+          orderId,
+          type: 'purchase',
+          amount: totalAmount,
+          date: 'Today',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: 'Pending',
+          description: `${product.name} x ${quantity}`,
+          gameTitle: game.title,
+          gameIcon: game.icon,
+          gameCoverImg: game.coverImg || '',
+          productName: product.name,
+          productPrice: product.price,
+          quantity,
+          playerId,
+          createdAt: new Date().toISOString(),
+        });
+
+        const userDocRef = doc(db, 'users', authUser.uid);
+        await updateDoc(userDocRef, {
+          walletBalance: updatedBalance,
+          totalSpent: updatedSpent,
+        });
+      } catch (err) {
+        console.error('Error adding purchase order to Firestore:', err);
+      }
+    }
 
     // Return to home tab
     setActiveTab('home');
@@ -82,6 +273,21 @@ export default function App() {
   const handleUpdateProfile = (updated: Partial<UserProfile>) => {
     setProfile((prev) => ({ ...prev, ...updated }));
   };
+
+  // If checking auth status
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-sm font-bold text-slate-300">Loading Benny Topup Nepal...</p>
+      </div>
+    );
+  }
+
+  // If user is not logged in, force AuthModal
+  if (!authUser) {
+    return <AuthModal onSuccess={handleAuthSuccess} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 antialiased">
@@ -115,6 +321,7 @@ export default function App() {
           <ProfileTab
             profile={profile}
             onUpdateProfile={handleUpdateProfile}
+            onSignOut={() => setAuthUser(null)}
           />
         )}
       </main>
@@ -135,4 +342,5 @@ export default function App() {
     </div>
   );
 }
+
 

@@ -43,8 +43,10 @@ export interface Transaction {
 }
 
 export interface UserProfile {
+  uid?: string;
   name: string;
   email: string;
+  whatsapp?: string;
   avatar: string;
   level: number;
   coins: number;

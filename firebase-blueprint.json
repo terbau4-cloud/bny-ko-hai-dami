@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User profile data including contact and wallet information",
+      "properties": {
+        "fullName": { "type": "string", "description": "Full name of user" },
+        "whatsapp": { "type": "string", "description": "WhatsApp phone number" },
+        "email": { "type": "string", "description": "Email address" },
+        "walletBalance": { "type": "number", "description": "Wallet balance in RS" },
+        "totalSpent": { "type": "number", "description": "Total amount spent in RS" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["fullName", "whatsapp", "email"]
+    },
+    "transactions": {
+      "title": "Transactions",
+      "description": "Top-up orders and wallet transactions",
+      "properties": {
+        "userId": { "type": "string", "description": "User ID who owns this transaction" },
+        "orderId": { "type": "string", "description": "Order ID e.g. BNY-12345678" },
+        "type": { "type": "string", "description": "Transaction type: purchase or deposit" },
+        "amount": { "type": "number", "description": "Amount in RS" },
+        "date": { "type": "string", "description": "Date formatted string" },
+        "time": { "type": "string", "description": "Time formatted string" },
+        "status": { "type": "string", "description": "Pending, Completed, Approved, Rejected" },
+        "description": { "type": "string", "description": "Transaction details" },
+        "gameTitle": { "type": "string", "description": "Game title" },
+        "gameIcon": { "type": "string", "description": "Game icon" },
+        "gameCoverImg": { "type": "string", "description": "Game image" },
+        "productName": { "type": "string", "description": "Product name" },
+        "productPrice": { "type": "number", "description": "Product unit price" },
+        "quantity": { "type": "number", "description": "Quantity" },
+        "playerId": { "type": "string", "description": "In-game Player ID" }
+      },
+      "required": ["userId", "amount", "status"]
+    }
+  }
+}
