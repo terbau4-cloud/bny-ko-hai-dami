@@ -163,7 +163,7 @@ export const TopupDetailPage: React.FC<Props> = ({
                   {game.requirements!.map((req) => (
                     <div key={req.id} className="space-y-1">
                       <span className="text-xs font-bold text-slate-600">
-                        {req.name} ({req.type}):
+                        {req.name}:
                       </span>
                       <div className="relative">
                         <UserCheck size={18} className="absolute left-3.5 top-3.5 text-indigo-600" />

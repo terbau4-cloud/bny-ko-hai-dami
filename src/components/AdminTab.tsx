@@ -22,7 +22,10 @@ import {
   Package,
   Layers,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  Lock,
+  Unlock,
+  Ban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Transaction, UserProfile, Game, GameRequirement, TopupProduct } from '../types';
@@ -45,7 +48,7 @@ interface Props {
 
 export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
-  const [activeSection, setActiveSection] = useState<'overview' | 'pending' | 'users' | 'orders' | 'games'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'games'>('overview');
 
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
@@ -53,6 +56,19 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
+
+  // Filter tabs & search for Orders
+  const [ordersStatusTab, setOrdersStatusTab] = useState<'Pending' | 'Approved' | 'Rejected'>('Pending');
+  const [ordersSearchTerm, setOrdersSearchTerm] = useState<string>('');
+
+  // Filter tabs & search for Deposits
+  const [depositsStatusTab, setDepositsStatusTab] = useState<'Pending' | 'Approved' | 'Rejected'>('Pending');
+  const [depositsSearchTerm, setDepositsSearchTerm] = useState<string>('');
+
+  // Add Balance Modal State
+  const [addBalanceUser, setAddBalanceUser] = useState<UserProfile | null>(null);
+  const [addBalanceAmountInput, setAddBalanceAmountInput] = useState<string>('');
+  const [addBalanceSuccess, setAddBalanceSuccess] = useState<string>('');
 
   // Selected Game for Drill-Down (Requirements & Products view)
   const [selectedAdminGame, setSelectedAdminGame] = useState<Game | null>(null);
@@ -101,6 +117,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           totalGamesPlayed: 0,
           soundEnabled: true,
           themeColor: 'purple',
+          blocked: Boolean(data.blocked),
         };
       });
       setUsersList(fetchedUsers);
@@ -182,6 +199,34 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
   useEffect(() => {
     fetchData();
 
+    // Listen for live updates on users
+    const qUsers = query(collection(db, 'users'));
+    const unsubscribeUsers = onSnapshot(
+      qUsers,
+      (snapshot) => {
+        const fetchedUsers: UserProfile[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            uid: d.id,
+            name: data.fullName || data.name || 'Gamer User',
+            email: data.email || '',
+            whatsapp: data.whatsapp || '',
+            avatar: '👤',
+            level: 1,
+            coins: 100,
+            walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
+            totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
+            totalGamesPlayed: 0,
+            soundEnabled: true,
+            themeColor: 'purple',
+            blocked: Boolean(data.blocked),
+          };
+        });
+        setUsersList(fetchedUsers);
+      },
+      (err) => console.error('Admin live users error:', err)
+    );
+
     // Listen for live updates on transactions
     const qTx = query(collection(db, 'transactions'));
     const unsubscribeTx = onSnapshot(
@@ -250,6 +295,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
     );
 
     return () => {
+      unsubscribeUsers();
       unsubscribeTx();
       unsubscribeGames();
     };
@@ -257,11 +303,14 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
 
   // Filtered stats
   const totalUsersCount = usersList.length;
-  const totalOrdersCount = transactionsList.length;
-  const pendingOrdersList = transactionsList.filter((t) => t.status === 'Pending');
+  const totalOrdersCount = transactionsList.filter((t) => t.type !== 'deposit').length;
+  const pendingOrdersList = transactionsList.filter((t) => t.type !== 'deposit' && t.status === 'Pending');
   const pendingOrdersCount = pendingOrdersList.length;
 
-  // Handle Approve Order
+  const totalDepositsCount = transactionsList.filter((t) => t.type === 'deposit').length;
+  const pendingDepositsCount = transactionsList.filter((t) => t.type === 'deposit' && t.status === 'Pending').length;
+
+  // Handle Approve Order / Deposit
   const handleApproveOrder = async (tx: Transaction) => {
     try {
       const txRef = doc(db, 'transactions', tx.id);
@@ -274,14 +323,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
       // If deposit, credit user wallet
       if (tx.type === 'deposit') {
         const usersSnap = await getDocs(collection(db, 'users'));
-        const targetUserDoc = usersSnap.docs.find(
-          (d) => d.data().email?.toLowerCase() === adminEmail.toLowerCase() || d.id
-        );
-        if (targetUserDoc) {
-          const currentBal = targetUserDoc.data().walletBalance || 0;
-          await updateDoc(doc(db, 'users', targetUserDoc.id), {
-            walletBalance: currentBal + tx.amount,
-          });
+        let targetDocId = '';
+        let currentBal = 0;
+
+        for (const userDoc of usersSnap.docs) {
+          const uData = userDoc.data();
+          if (
+            userDoc.id === (tx as any).userId ||
+            (uData.email && (tx as any).userEmail && uData.email.toLowerCase() === (tx as any).userEmail.toLowerCase())
+          ) {
+            targetDocId = userDoc.id;
+            currentBal = typeof uData.walletBalance === 'number' ? uData.walletBalance : 0;
+            break;
+          }
+        }
+
+        if (targetDocId) {
+          const newBal = currentBal + tx.amount;
+          await updateDoc(doc(db, 'users', targetDocId), { walletBalance: newBal });
+          setUsersList((prev) =>
+            prev.map((u) => (u.uid === targetDocId ? { ...u, walletBalance: newBal } : u))
+          );
         }
       }
     } catch (err) {
@@ -289,7 +351,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
     }
   };
 
-  // Handle Reject Order
+  // Handle Reject Order / Deposit
   const handleRejectOrder = async (txId: string) => {
     try {
       const txRef = doc(db, 'transactions', txId);
@@ -300,6 +362,66 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
       );
     } catch (err) {
       console.error('Error rejecting order:', err);
+    }
+  };
+
+  // Handle User Add Balance
+  const handleConfirmAddBalance = async () => {
+    if (!addBalanceUser || !addBalanceUser.uid) return;
+    const amountToAdd = parseFloat(addBalanceAmountInput);
+    if (isNaN(amountToAdd) || amountToAdd <= 0) {
+      alert('Please enter a valid positive amount.');
+      return;
+    }
+
+    try {
+      const currentBal = addBalanceUser.walletBalance || 0;
+      const newBal = currentBal + amountToAdd;
+      await updateDoc(doc(db, 'users', addBalanceUser.uid), { walletBalance: newBal });
+
+      setUsersList((prev) =>
+        prev.map((u) => (u.uid === addBalanceUser.uid ? { ...u, walletBalance: newBal } : u))
+      );
+
+      setAddBalanceSuccess(`Added RS ${amountToAdd} to ${addBalanceUser.name}!`);
+      setTimeout(() => {
+        setAddBalanceSuccess('');
+        setAddBalanceUser(null);
+        setAddBalanceAmountInput('');
+      }, 1500);
+    } catch (err) {
+      console.error('Error adding user balance:', err);
+      alert('Failed to add balance.');
+    }
+  };
+
+  // Handle Delete User
+  const handleDeleteUser = async (user: UserProfile) => {
+    if (!user.uid) return;
+    if (!window.confirm(`Are you sure you want to delete user "${user.name}"? This cannot be undone.`)) return;
+
+    try {
+      await deleteDoc(doc(db, 'users', user.uid));
+      setUsersList((prev) => prev.filter((u) => u.uid !== user.uid));
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      alert('Failed to delete user.');
+    }
+  };
+
+  // Handle Block / Unblock User
+  const handleToggleBlockUser = async (user: UserProfile) => {
+    if (!user.uid) return;
+    const newBlocked = !user.blocked;
+
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { blocked: newBlocked });
+      setUsersList((prev) =>
+        prev.map((u) => (u.uid === user.uid ? { ...u, blocked: newBlocked } : u))
+      );
+    } catch (err) {
+      console.error('Error toggling block state:', err);
+      alert('Failed to update block state.');
     }
   };
 
@@ -595,26 +717,24 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
 
                   <button
                     onClick={() => {
-                      setActiveSection('pending');
+                      setActiveSection('users');
                       setSelectedAdminGame(null);
                       setDrawerOpen(false);
                     }}
-                    id="drawer-nav-pending"
+                    id="drawer-nav-users"
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
-                      activeSection === 'pending'
+                      activeSection === 'users'
                         ? 'bg-indigo-600 text-white shadow-md'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <Clock size={18} />
-                      <span>Pending Orders</span>
+                      <Users size={18} />
+                      <span>Users</span>
                     </div>
-                    {pendingOrdersCount > 0 && (
-                      <span className="bg-amber-400 text-slate-950 font-black text-xs px-2 py-0.5 rounded-full">
-                        {pendingOrdersCount}
-                      </span>
-                    )}
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {totalUsersCount}
+                    </span>
                   </button>
 
                   <button
@@ -632,29 +752,45 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                   >
                     <div className="flex items-center gap-3">
                       <ShoppingBag size={18} />
-                      <span>All Orders</span>
+                      <span>Orders</span>
                     </div>
-                    <span className="text-xs font-mono font-bold text-slate-400">{totalOrdersCount}</span>
+                    {pendingOrdersCount > 0 ? (
+                      <span className="bg-amber-400 text-slate-950 font-black text-xs px-2 py-0.5 rounded-full">
+                        {pendingOrdersCount}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {totalOrdersCount}
+                      </span>
+                    )}
                   </button>
 
                   <button
                     onClick={() => {
-                      setActiveSection('users');
+                      setActiveSection('deposits');
                       setSelectedAdminGame(null);
                       setDrawerOpen(false);
                     }}
-                    id="drawer-nav-users"
+                    id="drawer-nav-deposits"
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
-                      activeSection === 'users'
+                      activeSection === 'deposits'
                         ? 'bg-indigo-600 text-white shadow-md'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <Users size={18} />
-                      <span>Total Users</span>
+                      <Wallet size={18} />
+                      <span>Deposits</span>
                     </div>
-                    <span className="text-xs font-mono font-bold text-slate-400">{totalUsersCount}</span>
+                    {pendingDepositsCount > 0 ? (
+                      <span className="bg-amber-400 text-slate-950 font-black text-xs px-2 py-0.5 rounded-full">
+                        {pendingDepositsCount}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {totalDepositsCount}
+                      </span>
+                    )}
                   </button>
 
                   <button
@@ -674,7 +810,9 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                       <Gamepad2 size={18} />
                       <span>Games Management</span>
                     </div>
-                    <span className="text-xs font-mono font-bold text-slate-400">{gamesList.length}</span>
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {gamesList.length}
+                    </span>
                   </button>
                 </nav>
               </div>
@@ -730,13 +868,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
               </div>
               <div className="text-3xl font-black text-slate-900">{totalOrdersCount}</div>
               <p className="text-[11px] text-slate-500 font-semibold mt-1">
-                All topups & deposits recorded
+                All topups recorded
               </p>
             </div>
 
             <div
               onClick={() => {
-                setActiveSection('pending');
+                setActiveSection('orders');
                 setSelectedAdminGame(null);
               }}
               className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
@@ -764,8 +902,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           </div>
         )}
 
-        {/* SECTION 1: PENDING ORDERS */}
-        {(activeSection === 'overview' || activeSection === 'pending') && (
+        {/* SECTION: OVERVIEW PENDING ORDERS QUICK VIEW */}
+        {activeSection === 'overview' && (
           <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">
@@ -864,36 +1002,36 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           </div>
         )}
 
-        {/* SECTION 2: TOTAL USERS */}
-        {(activeSection === 'overview' || activeSection === 'users') && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
+        {/* SECTION: USERS MANAGEMENT */}
+        {activeSection === 'users' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                  <Users size={18} />
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                  <Users size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">Registered Users</h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Manage player accounts & wallet balances
+                  <h3 className="text-xl font-black text-slate-900">Registered Users</h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    View user profiles, add balance, block or delete users
                   </p>
                 </div>
               </div>
 
               <div className="relative">
-                <Search size={15} className="absolute left-3 top-3 text-slate-400" />
+                <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search user name or email..."
-                  className="pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-xl outline-none focus:border-indigo-600 focus:bg-white w-full sm:w-60 shadow-2xs"
+                  placeholder="Search name, email, whatsapp..."
+                  className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-xl outline-none focus:border-indigo-600 focus:bg-white w-full sm:w-64 shadow-2xs"
                 />
               </div>
             </div>
 
             {usersList.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-xs font-bold">
+              <div className="text-center py-10 text-slate-400 text-xs font-bold">
                 No users found in system.
               </div>
             ) : (
@@ -902,50 +1040,90 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                   .filter(
                     (u) =>
                       u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      u.email.toLowerCase().includes(searchTerm.toLowerCase())
+                      u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      (u.whatsapp && u.whatsapp.toLowerCase().includes(searchTerm.toLowerCase()))
                   )
                   .map((usr) => (
                     <div
                       key={usr.uid || usr.email}
-                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                      className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                        usr.blocked
+                          ? 'bg-rose-50/50 border-rose-200'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
                     >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-slate-900 text-sm">{usr.name}</span>
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-slate-900 text-base">{usr.name}</span>
                           {usr.email.toLowerCase() === adminEmail.toLowerCase() && (
                             <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded border border-indigo-200">
                               Admin
                             </span>
                           )}
+                          {usr.blocked && (
+                            <span className="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
+                              <Ban size={12} /> Blocked
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-slate-500 font-mono">{usr.email}</p>
-                        {usr.whatsapp && (
-                          <p className="text-[11px] text-emerald-600 font-bold">
-                            WhatsApp: {usr.whatsapp}
-                          </p>
-                        )}
+
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-x-4 gap-y-1 text-xs text-slate-600 font-medium">
+                          <span className="font-mono text-slate-700">✉️ {usr.email || 'No Email'}</span>
+                          <span className="font-mono text-emerald-700">📱 WhatsApp: {usr.whatsapp || 'N/A'}</span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-slate-200 pt-2 sm:pt-0">
-                        <div className="text-right">
+                      <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-slate-200/80 pt-3 md:pt-0 shrink-0">
+                        <div className="text-left md:text-right pr-2">
                           <span className="text-[10px] text-slate-400 font-bold uppercase block">
-                            Wallet Balance
+                            Balance
                           </span>
-                          <span className="font-black text-emerald-600 text-base">
+                          <span className="font-black text-emerald-600 text-lg">
                             RS {usr.walletBalance}
                           </span>
                         </div>
 
-                        <button
-                          onClick={() => {
-                            setAdjustingUser(usr);
-                            setNewBalanceInput(usr.walletBalance.toString());
-                          }}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
-                        >
-                          <Wallet size={14} />
-                          <span>Set Balance</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {/* Add Balance Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddBalanceUser(usr);
+                              setAddBalanceAmountInput('');
+                            }}
+                            id={`add-bal-${usr.uid}`}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                          >
+                            <Plus size={14} />
+                            <span>Add Balance</span>
+                          </button>
+
+                          {/* Block / Unblock Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBlockUser(usr)}
+                            id={`block-user-${usr.uid}`}
+                            className={`font-bold text-xs px-3 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1 border ${
+                              usr.blocked
+                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300'
+                                : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300'
+                            }`}
+                          >
+                            {usr.blocked ? <Unlock size={14} /> : <Lock size={14} />}
+                            <span>{usr.blocked ? 'Unblock' : 'Block'}</span>
+                          </button>
+
+                          {/* Delete User Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUser(usr)}
+                            id={`delete-user-${usr.uid}`}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs px-2.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                            title="Delete User"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -954,65 +1132,340 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           </div>
         )}
 
-        {/* SECTION 3: ALL ORDERS */}
+        {/* SECTION: ORDERS MANAGEMENT */}
         {activeSection === 'orders' && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
-                  <ShoppingBag size={18} />
+                <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
+                  <ShoppingBag size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">All System Orders</h3>
-                  <p className="text-xs text-slate-500">History of all transactions</p>
+                  <h3 className="text-xl font-black text-slate-900">Orders</h3>
+                  <p className="text-xs text-slate-500 font-semibold">Filter and manage all customer topup orders</p>
                 </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64">
+                <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  value={ordersSearchTerm}
+                  onChange={(e) => setOrdersSearchTerm(e.target.value)}
+                  placeholder="Search Order ID, Game, Player ID..."
+                  className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-xl outline-none focus:border-indigo-600 focus:bg-white w-full shadow-2xs"
+                />
               </div>
             </div>
 
-            {transactionsList.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-xs font-bold">
-                No transactions recorded yet.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {transactionsList.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs"
+            {/* Status Filter Tabs (Pending, Completed, Rejected) */}
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              {(['Pending', 'Approved', 'Rejected'] as const).map((status) => {
+                const label = status === 'Approved' ? 'Completed' : status;
+                const count = transactionsList.filter(
+                  (t) =>
+                    t.type !== 'deposit' &&
+                    (status === 'Approved' ? t.status === 'Approved' || t.status === 'Completed' : t.status === status)
+                ).length;
+
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setOrdersStatusTab(status)}
+                    className={`px-4 py-2 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                      ordersStatusTab === status
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-indigo-600">
-                          {tx.orderId || 'ORD'}
-                        </span>
-                        <span
-                          className={`font-black px-2.5 py-0.5 rounded-full text-[10px] ${
-                            tx.status === 'Approved' || tx.status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : tx.status === 'Pending'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {tx.status}
-                        </span>
+                    <span>{label}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] ${
+                        ordersStatusTab === status
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* List of Orders */}
+            {(() => {
+              const filteredOrders = transactionsList.filter((tx) => {
+                if (tx.type === 'deposit') return false;
+
+                // Status match
+                const matchesStatus =
+                  ordersStatusTab === 'Approved'
+                    ? tx.status === 'Approved' || tx.status === 'Completed'
+                    : tx.status === ordersStatusTab;
+
+                if (!matchesStatus) return false;
+
+                // Search match
+                if (!ordersSearchTerm.trim()) return true;
+                const q = ordersSearchTerm.toLowerCase();
+                return (
+                  (tx.orderId && tx.orderId.toLowerCase().includes(q)) ||
+                  (tx.description && tx.description.toLowerCase().includes(q)) ||
+                  (tx.gameTitle && tx.gameTitle.toLowerCase().includes(q)) ||
+                  (tx.productName && tx.productName.toLowerCase().includes(q)) ||
+                  (tx.playerId && tx.playerId.toLowerCase().includes(q))
+                );
+              });
+
+              if (filteredOrders.length === 0) {
+                return (
+                  <div className="text-center py-10 text-slate-400 text-xs font-bold">
+                    No {ordersStatusTab === 'Approved' ? 'Completed' : ordersStatusTab} orders found.
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {filteredOrders.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
+                    >
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
+                            {tx.orderId || 'ORDER'}
+                          </span>
+                          <span
+                            className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                              tx.status === 'Approved' || tx.status === 'Completed'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : tx.status === 'Pending'
+                                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                : 'bg-rose-100 text-rose-800 border-rose-200'
+                            }`}
+                          >
+                            {tx.status === 'Approved' ? 'Completed' : tx.status}
+                          </span>
+                          <span className="text-xs font-bold text-slate-400">{tx.time}</span>
+                        </div>
+
+                        <div className="text-base font-black text-slate-900 flex items-center gap-2">
+                          <span>{tx.gameTitle ? `${tx.gameTitle} - ` : ''}{tx.description}</span>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
+                          {tx.playerId && (
+                            <span className="bg-white px-2.5 py-1 rounded font-mono font-bold text-slate-700 border border-slate-200 shadow-2xs">
+                              Player ID: {tx.playerId}
+                            </span>
+                          )}
+                          <span className="font-black text-emerald-600 text-sm">
+                            RS {tx.amount}
+                          </span>
+                        </div>
                       </div>
-                      <p className="font-bold text-slate-900 text-sm mt-0.5">{tx.description}</p>
-                      {tx.playerId && (
-                        <p className="text-slate-500 font-mono">ID: {tx.playerId}</p>
+
+                      {/* Action Buttons for Pending orders */}
+                      {tx.status === 'Pending' && (
+                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                          <button
+                            onClick={() => handleApproveOrder(tx)}
+                            id={`approve-order-${tx.id}`}
+                            className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle2 size={16} />
+                            <span>Approve</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleRejectOrder(tx.id)}
+                            id={`reject-order-${tx.id}`}
+                            className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <XCircle size={16} />
+                            <span>Reject</span>
+                          </button>
+                        </div>
                       )}
                     </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
-                    <div className="text-right">
-                      <span className="font-black text-emerald-600 text-sm block">
-                        RS {tx.amount}
-                      </span>
-                      <span className="text-slate-400 text-[10px] font-semibold">{tx.time}</span>
-                    </div>
-                  </div>
-                ))}
+        {/* SECTION: DEPOSITS MANAGEMENT */}
+        {activeSection === 'deposits' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                  <Wallet size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Wallet Deposits</h3>
+                  <p className="text-xs text-slate-500 font-semibold">Review and approve manual QR wallet deposits</p>
+                </div>
               </div>
-            )}
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64">
+                <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  value={depositsSearchTerm}
+                  onChange={(e) => setDepositsSearchTerm(e.target.value)}
+                  placeholder="Search Order ID or details..."
+                  className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-xl outline-none focus:border-indigo-600 focus:bg-white w-full shadow-2xs"
+                />
+              </div>
+            </div>
+
+            {/* Status Filter Tabs (Pending, Completed, Rejected) */}
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              {(['Pending', 'Approved', 'Rejected'] as const).map((status) => {
+                const label = status === 'Approved' ? 'Completed' : status;
+                const count = transactionsList.filter(
+                  (t) =>
+                    t.type === 'deposit' &&
+                    (status === 'Approved' ? t.status === 'Approved' || t.status === 'Completed' : t.status === status)
+                ).length;
+
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setDepositsStatusTab(status)}
+                    className={`px-4 py-2 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                      depositsStatusTab === status
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] ${
+                        depositsStatusTab === status
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* List of Deposits */}
+            {(() => {
+              const filteredDeposits = transactionsList.filter((tx) => {
+                if (tx.type !== 'deposit') return false;
+
+                // Status match
+                const matchesStatus =
+                  depositsStatusTab === 'Approved'
+                    ? tx.status === 'Approved' || tx.status === 'Completed'
+                    : tx.status === depositsStatusTab;
+
+                if (!matchesStatus) return false;
+
+                // Search match
+                if (!depositsSearchTerm.trim()) return true;
+                const q = depositsSearchTerm.toLowerCase();
+                return (
+                  (tx.orderId && tx.orderId.toLowerCase().includes(q)) ||
+                  (tx.description && tx.description.toLowerCase().includes(q)) ||
+                  tx.amount.toString().includes(q)
+                );
+              });
+
+              if (filteredDeposits.length === 0) {
+                return (
+                  <div className="text-center py-10 text-slate-400 text-xs font-bold">
+                    No {depositsStatusTab === 'Approved' ? 'Completed' : depositsStatusTab} deposits found.
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {filteredDeposits.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
+                    >
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
+                            {tx.orderId || 'DEP'}
+                          </span>
+                          <span
+                            className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                              tx.status === 'Approved' || tx.status === 'Completed'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : tx.status === 'Pending'
+                                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                : 'bg-rose-100 text-rose-800 border-rose-200'
+                            }`}
+                          >
+                            {tx.status === 'Approved' ? 'Completed' : tx.status}
+                          </span>
+                          <span className="text-xs font-bold text-slate-400">{tx.time}</span>
+                        </div>
+
+                        <div className="text-base font-black text-slate-900">{tx.description}</div>
+
+                        <div className="flex items-center gap-3 text-xs text-slate-600">
+                          <span className="font-black text-emerald-600 text-base">
+                            RS {tx.amount}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                        {tx.screenshotUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedScreenshot(tx.screenshotUrl || null)}
+                            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Eye size={14} />
+                            <span>Receipt</span>
+                          </button>
+                        )}
+
+                        {tx.status === 'Pending' && (
+                          <>
+                            <button
+                              onClick={() => handleApproveOrder(tx)}
+                              id={`approve-deposit-${tx.id}`}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 size={16} />
+                              <span>Approve</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleRejectOrder(tx.id)}
+                              id={`reject-deposit-${tx.id}`}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3 py-2 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            >
+                              <XCircle size={16} />
+                              <span>Reject</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1621,6 +2074,66 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                   className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md"
                 >
                   Save Balance
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 6: ADD BALANCE POPUP */}
+      <AnimatePresence>
+        {addBalanceUser && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-900 text-base">Add Balance to User</h3>
+                <button
+                  onClick={() => setAddBalanceUser(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-1 bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100">
+                <p className="text-[11px] font-extrabold uppercase text-indigo-500">Target User</p>
+                <p className="text-sm font-black text-slate-900">{addBalanceUser.name}</p>
+                <p className="text-xs font-mono text-slate-600">{addBalanceUser.email}</p>
+                <p className="text-xs font-bold text-emerald-600 mt-1">
+                  Current Balance: RS {addBalanceUser.walletBalance}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Amount to Add (RS)
+                </label>
+                <input
+                  type="number"
+                  value={addBalanceAmountInput}
+                  onChange={(e) => setAddBalanceAmountInput(e.target.value)}
+                  placeholder="e.g. 500"
+                  id="add-balance-amount-input"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-black text-lg rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setAddBalanceUser(null)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmAddBalance}
+                  id="confirm-add-balance-btn"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={16} />
+                  <span>Add</span>
                 </button>
               </div>
             </div>

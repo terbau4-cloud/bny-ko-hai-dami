@@ -375,10 +375,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 antialiased">
       {/* Top Header Bar */}
-      <Header
-        profile={profile}
-        onOpenWallet={() => setActiveTab('wallet')}
-      />
+      {activeTab !== 'admin' && (
+        <Header
+          profile={profile}
+          onOpenWallet={() => setActiveTab('wallet')}
+        />
+      )}
 
       {/* Main Content Area */}
       <main className="px-4 py-5 max-w-3xl mx-auto">

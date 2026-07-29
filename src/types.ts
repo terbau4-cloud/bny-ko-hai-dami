@@ -62,5 +62,6 @@ export interface UserProfile {
   totalGamesPlayed: number;
   soundEnabled: boolean;
   themeColor: 'purple' | 'blue' | 'emerald' | 'amber';
+  blocked?: boolean;
 }
 

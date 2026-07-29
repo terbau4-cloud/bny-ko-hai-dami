@@ -16,8 +16,6 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const presetAmounts = [100, 500, 1000, 2000];
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -184,25 +182,6 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
                 className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-xl font-bold text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
                 required
               />
-            </div>
-
-            {/* Fast Presets */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {presetAmounts.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setAmount(preset.toString())}
-                  id={`preset-${preset}`}
-                  className={`px-4 py-2 rounded-xl font-bold text-sm transition-all cursor-pointer ${
-                    amount === preset.toString()
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                  }`}
-                >
-                  +RS {preset}
-                </button>
-              ))}
             </div>
           </div>
 
