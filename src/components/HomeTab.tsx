@@ -42,17 +42,17 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame }) => {
       {/* Games Top-Up Grid */}
       <div className="space-y-4">
         <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <span className="w-2 h-6 bg-indigo-500 rounded-full"></span>
+          <span className="w-2.5 h-6 bg-indigo-600 rounded-full"></span>
           Popular Games
         </h3>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
           {games.map((game) => (
             <div
               key={game.id}
               onClick={() => onSelectGame(game)}
               id={`topup-card-${game.id}`}
-              className="bg-slate-900 rounded-2xl overflow-hidden shadow-md border-2 border-slate-800 hover:border-amber-500 transition-all group cursor-pointer flex flex-col justify-between"
+              className="bg-slate-900 rounded-3xl overflow-hidden shadow-lg border-2 border-slate-800 hover:border-amber-400 transition-all group cursor-pointer flex flex-col justify-between hover:scale-[1.03] active:scale-95"
             >
               {/* Cover image or logo graphic */}
               <div className="relative aspect-square overflow-hidden bg-slate-800 flex items-center justify-center">
@@ -61,27 +61,22 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame }) => {
                     src={game.coverImg}
                     alt={game.title}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500"
                   />
                 ) : (
-                  <div className={`w-full h-full ${game.bgGradient} flex items-center justify-center text-4xl`}>
+                  <div className={`w-full h-full ${game.bgGradient} flex items-center justify-center text-5xl`}>
                     {game.icon}
                   </div>
                 )}
                 {/* Subtle Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-70" />
               </div>
 
-              {/* Title & Publisher */}
-              <div className="p-3 bg-slate-900 text-white space-y-0.5">
-                <h4 className="font-bold text-xs sm:text-sm text-slate-100 line-clamp-2 leading-tight group-hover:text-amber-400 transition-colors">
+              {/* Title only - publisher removed as requested */}
+              <div className="p-4 bg-slate-900 text-white">
+                <h4 className="font-extrabold text-sm sm:text-base text-slate-100 line-clamp-2 leading-snug group-hover:text-amber-400 transition-colors">
                   {game.title}
                 </h4>
-                {game.publisher && (
-                  <p className="text-[11px] font-medium text-slate-400 italic">
-                    {game.publisher}
-                  </p>
-                )}
               </div>
             </div>
           ))}

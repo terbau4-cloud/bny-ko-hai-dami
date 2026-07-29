@@ -147,28 +147,58 @@ export const TopupDetailPage: React.FC<Props> = ({
           </motion.div>
         ) : (
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-6">
-            {/* Step 1: Player ID */}
-            <div className="space-y-2">
+            {/* Step 1: Requirements (Player ID / User ID / Server) */}
+            <div className="space-y-3">
               <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-extrabold text-xs">
                   1
                 </div>
-                <span>Enter Player ID / User ID</span>
+                <span>
+                  {game.requirements && game.requirements.length > 0
+                    ? 'Enter Account Details'
+                    : 'Enter Player ID / User ID'}
+                </span>
               </label>
-              <div className="relative">
-                <UserCheck size={18} className="absolute left-3.5 top-3.5 text-indigo-600" />
-                <input
-                  type="text"
-                  value={playerId}
-                  onChange={(e) => {
-                    setPlayerId(e.target.value);
-                    if (errorMsg) setErrorMsg('');
-                  }}
-                  placeholder="e.g. 123456789 (Zone ID)"
-                  id="page-player-id-input"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl text-slate-900 font-bold text-sm outline-none transition-all shadow-xs"
-                />
-              </div>
+
+              {game.requirements && game.requirements.length > 0 ? (
+                <div className="space-y-3">
+                  {game.requirements.map((req) => (
+                    <div key={req.id} className="space-y-1">
+                      <span className="text-xs font-bold text-slate-600">
+                        {req.name} ({req.type}):
+                      </span>
+                      <div className="relative">
+                        <UserCheck size={18} className="absolute left-3.5 top-3.5 text-indigo-600" />
+                        <input
+                          type={req.type === 'number' ? 'number' : 'text'}
+                          value={playerId}
+                          onChange={(e) => {
+                            setPlayerId(e.target.value);
+                            if (errorMsg) setErrorMsg('');
+                          }}
+                          placeholder={`Enter ${req.name}`}
+                          className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl text-slate-900 font-bold text-sm outline-none transition-all shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="relative">
+                  <UserCheck size={18} className="absolute left-3.5 top-3.5 text-indigo-600" />
+                  <input
+                    type="text"
+                    value={playerId}
+                    onChange={(e) => {
+                      setPlayerId(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder="e.g. 123456789 (Zone ID)"
+                    id="page-player-id-input"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl text-slate-900 font-bold text-sm outline-none transition-all shadow-xs"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Step 2: Select Package */}

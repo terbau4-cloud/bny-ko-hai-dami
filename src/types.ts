@@ -7,6 +7,12 @@ export interface TopupProduct {
   badge?: string;
 }
 
+export interface GameRequirement {
+  id: string;
+  name: string;
+  type: 'number' | 'text';
+}
+
 export interface Game {
   id: string;
   title: string;
@@ -21,6 +27,7 @@ export interface Game {
   description: string;
   gameType: 'memory' | 'balloon' | 'tictactoe' | 'whack' | 'snake';
   products?: TopupProduct[];
+  requirements?: GameRequirement[];
 }
 
 export interface Transaction {
