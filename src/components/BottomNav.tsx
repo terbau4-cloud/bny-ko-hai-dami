@@ -1,13 +1,16 @@
 import React from 'react';
 import { TabType } from '../types';
-import { Home, Wallet, History, User } from 'lucide-react';
+import { Home, Wallet, History, User, ShieldCheck } from 'lucide-react';
 
 interface Props {
   activeTab: TabType;
   onSelectTab: (tab: TabType) => void;
+  userEmail?: string;
 }
 
-export const BottomNav: React.FC<Props> = ({ activeTab, onSelectTab }) => {
+export const BottomNav: React.FC<Props> = ({ activeTab, onSelectTab, userEmail }) => {
+  const isAdmin = userEmail?.toLowerCase() === 'bnyeshop@gmail.com';
+
   const tabs = [
     { id: 'home' as TabType, label: 'Home', icon: Home },
     { id: 'wallet' as TabType, label: 'Wallet', icon: Wallet },
@@ -15,8 +18,12 @@ export const BottomNav: React.FC<Props> = ({ activeTab, onSelectTab }) => {
     { id: 'profile' as TabType, label: 'Profile', icon: User },
   ];
 
+  if (isAdmin) {
+    tabs.push({ id: 'admin' as TabType, label: 'Admin', icon: ShieldCheck });
+  }
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 h-20 flex items-center justify-around px-6 sm:px-12 shadow-lg">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 h-20 flex items-center justify-around px-3 sm:px-12 shadow-lg">
       <div className="max-w-md w-full mx-auto flex items-center justify-around">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -32,9 +39,9 @@ export const BottomNav: React.FC<Props> = ({ activeTab, onSelectTab }) => {
               }`}
             >
               <div className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-indigo-50' : ''}`}>
-                <Icon size={26} className={isActive ? 'stroke-[2.5px]' : 'stroke-2'} />
+                <Icon size={24} className={isActive ? 'stroke-[2.5px]' : 'stroke-2'} />
               </div>
-              <span className={`text-xs ${isActive ? 'font-bold' : 'font-medium'}`}>{tab.label}</span>
+              <span className={`text-[11px] ${isActive ? 'font-black' : 'font-medium'}`}>{tab.label}</span>
             </button>
           );
         })}

@@ -7,7 +7,8 @@ import { HomeTab } from './components/HomeTab';
 import { WalletTab } from './components/WalletTab';
 import { HistoryTab } from './components/HistoryTab';
 import { ProfileTab } from './components/ProfileTab';
-import { TopupDetailModal } from './components/TopupDetailModal';
+import { AdminTab } from './components/AdminTab';
+import { TopupDetailPage } from './components/TopupDetailPage';
 import { AuthModal } from './components/AuthModal';
 
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
@@ -35,9 +36,25 @@ export default function App() {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
 
+  // Safety fallback for mobile devices to prevent infinite loading state
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAuthChecking(false);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   // Listen for Firebase Auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubscribeTx: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubscribeTx) {
+        unsubscribeTx();
+        unsubscribeTx = null;
+      }
+
       setAuthUser(user);
       if (user) {
         // Fetch or sync user profile from Firestore
@@ -49,7 +66,7 @@ export default function App() {
             const data = userSnap.data();
             setProfile({
               uid: user.uid,
-              name: data.fullName || user.displayName || 'Benny Gamer',
+              name: data.fullName || user.displayName || 'BNY Gamer',
               email: data.email || user.email || '',
               whatsapp: data.whatsapp || '',
               avatar: '👤',
@@ -65,7 +82,7 @@ export default function App() {
             // Create user profile if missing
             const initProf: UserProfile = {
               uid: user.uid,
-              name: user.displayName || 'Benny Gamer',
+              name: user.displayName || 'BNY Gamer',
               email: user.email || '',
               whatsapp: '',
               avatar: '👤',
@@ -94,7 +111,7 @@ export default function App() {
 
         // Listen to Firestore transactions for this user
         const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        const unsubscribeTx = onSnapshot(
+        unsubscribeTx = onSnapshot(
           q,
           (snapshot) => {
             if (!snapshot.empty) {
@@ -127,8 +144,6 @@ export default function App() {
             console.error('Firestore transactions snapshot error:', err);
           }
         );
-
-        return () => unsubscribeTx();
       } else {
         setTransactions(INITIAL_TRANSACTIONS);
         setProfile(INITIAL_PROFILE);
@@ -136,7 +151,10 @@ export default function App() {
       setAuthChecking(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeTx) unsubscribeTx();
+      unsubscribeAuth();
+    };
   }, []);
 
   // Handle Auth Success from AuthModal
@@ -266,8 +284,9 @@ export default function App() {
       }
     }
 
-    // Return to home tab
-    setActiveTab('home');
+    // Clear selected game and go to history tab
+    setSelectedGame(null);
+    setActiveTab('history');
   };
 
   const handleUpdateProfile = (updated: Partial<UserProfile>) => {
@@ -277,9 +296,17 @@ export default function App() {
   // If checking auth status
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-sm font-bold text-slate-300">Loading Benny Topup Nepal...</p>
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4 border border-slate-700 shadow-xl bg-slate-900 flex items-center justify-center animate-pulse">
+          <img
+            src="https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg"
+            alt="BNY SHOP Logo"
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+          />
+        </div>
+        <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-sm font-black text-slate-200 tracking-wide">Loading BNY SHOP...</p>
       </div>
     );
   }
@@ -287,6 +314,18 @@ export default function App() {
   // If user is not logged in, force AuthModal
   if (!authUser) {
     return <AuthModal onSuccess={handleAuthSuccess} />;
+  }
+
+  // If a game is selected, show full TopupDetailPage instead of modal
+  if (selectedGame) {
+    return (
+      <TopupDetailPage
+        game={selectedGame}
+        onBack={() => setSelectedGame(null)}
+        onPurchase={handlePurchaseOrder}
+        walletBalance={profile.walletBalance}
+      />
+    );
   }
 
   return (
@@ -324,23 +363,24 @@ export default function App() {
             onSignOut={() => setAuthUser(null)}
           />
         )}
+
+        {activeTab === 'admin' && (
+          <AdminTab adminEmail={profile.email || authUser?.email || 'bnyeshop@gmail.com'} />
+        )}
       </main>
 
-      {/* Interactive Game Top-Up Detail Modal */}
-      <TopupDetailModal
-        game={selectedGame}
-        onClose={() => setSelectedGame(null)}
-        onPurchase={handlePurchaseOrder}
-        walletBalance={profile.walletBalance}
-      />
-
-      {/* Bottom 4 Navigation Tabs */}
+      {/* Bottom Navigation Tabs */}
       <BottomNav
         activeTab={activeTab}
-        onSelectTab={(tab) => setActiveTab(tab)}
+        userEmail={profile.email || authUser?.email || ''}
+        onSelectTab={(tab) => {
+          setSelectedGame(null);
+          setActiveTab(tab);
+        }}
       />
     </div>
   );
 }
+
 
 

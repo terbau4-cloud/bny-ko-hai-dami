@@ -1,4 +1,4 @@
-export type TabType = 'home' | 'wallet' | 'history' | 'profile';
+export type TabType = 'home' | 'wallet' | 'history' | 'profile' | 'admin';
 
 export interface TopupProduct {
   id: string;

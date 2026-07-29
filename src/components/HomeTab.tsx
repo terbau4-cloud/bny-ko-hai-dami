@@ -24,7 +24,7 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame }) => {
             <Flame size={14} className="fill-slate-900" /> INSTANT TOP-UP
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1 text-white">
-            Game Top-Up Center
+            BNY Game Top-Up
           </h2>
           <p className="text-indigo-100 text-sm font-medium opacity-90 mb-4">
             Direct ID Recharge & Fast Diamond Delivery.

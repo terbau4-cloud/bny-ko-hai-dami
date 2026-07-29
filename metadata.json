@@ -1,6 +1,6 @@
 {
-  "name": "Game App",
-  "description": "Simple games app with home banner, wallet QR code and screenshot uploader, history, and profile.",
+  "name": "BNY SHOP",
+  "description": "BNY SHOP - Ultimate Game Top Up & Wallet Recharge Center for Nepal",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
