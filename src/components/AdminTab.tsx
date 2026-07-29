@@ -66,14 +66,38 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
       return tx.requirementsData;
     }
     if (tx.playerId) {
-      if (tx.playerId.includes(':')) {
-        const parts = tx.playerId.split('|');
+      const rawId = tx.playerId.trim();
+      if (rawId.includes(':')) {
+        const parts = rawId.split('|');
         return parts.map((part) => {
-          const [k, v] = part.split(':');
-          return { name: k ? k.trim() : 'Requirement', value: v ? v.trim() : part.trim() };
+          const colIdx = part.indexOf(':');
+          if (colIdx !== -1) {
+            const k = part.substring(0, colIdx).trim();
+            const v = part.substring(colIdx + 1).trim();
+            return { name: k || 'Player ID', value: v || part.trim() };
+          }
+          return { name: 'Player ID', value: part.trim() };
         });
       }
-      return [{ name: 'Player Details', value: tx.playerId }];
+
+      const allGames = gamesList.length > 0 ? gamesList : INITIAL_GAMES;
+      const matchedGame = allGames.find(
+        (g) => (tx.gameTitle && g.title.toLowerCase().includes(tx.gameTitle.toLowerCase())) ||
+               (tx.gameTitle && tx.gameTitle.toLowerCase().includes(g.title.toLowerCase())) ||
+               g.id === tx.gameId
+      );
+
+      if (matchedGame && matchedGame.requirements && matchedGame.requirements.length > 0) {
+        if (matchedGame.requirements.length === 1) {
+          return [{ name: matchedGame.requirements[0].name, value: rawId }];
+        }
+        return matchedGame.requirements.map((req, idx) => ({
+          name: req.name,
+          value: idx === 0 ? rawId : '-',
+        }));
+      }
+
+      return [{ name: 'Player ID', value: rawId }];
     }
     return [];
   };
@@ -156,6 +180,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           time: data.time || '',
           status: data.status || 'Pending',
           description: data.description || '',
+          gameId: data.gameId,
           gameTitle: data.gameTitle,
           gameIcon: data.gameIcon,
           productName: data.productName,
@@ -267,6 +292,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
             time: data.time || '',
             status: data.status || 'Pending',
             description: data.description || '',
+            gameId: data.gameId,
             gameTitle: data.gameTitle,
             gameIcon: data.gameIcon,
             productName: data.productName,

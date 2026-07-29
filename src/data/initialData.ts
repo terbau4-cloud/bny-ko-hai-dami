@@ -186,7 +186,7 @@ export const INITIAL_PROFILE: UserProfile = {
   avatar: '👤',
   level: 5,
   coins: 125,
-  walletBalance: 850,
+  walletBalance: 0,
   totalSpent: 1280,
   soundEnabled: true,
   themeColor: 'purple',
