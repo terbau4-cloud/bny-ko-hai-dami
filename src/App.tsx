@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TabType, Game, Transaction, UserProfile, TopupProduct } from './types';
+import { TabType, Game, Transaction, UserProfile, TopupProduct, AppBanner } from './types';
 import { INITIAL_GAMES, INITIAL_TRANSACTIONS, INITIAL_PROFILE } from './data/initialData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -31,6 +31,10 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
+
+  // Dynamic Banners and Team Members
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
+  const [banners, setBanners] = useState<AppBanner[]>([]);
 
   // Auth States
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
@@ -204,6 +208,29 @@ export default function App() {
     return () => unsubscribeGames();
   }, []);
 
+  // Listen for team_members and banners
+  useEffect(() => {
+    const unsubMembers = onSnapshot(collection(db, 'team_members'), (snap) => {
+      const emails = snap.docs.map((d) => d.data().email).filter(Boolean);
+      setTeamMembers(emails);
+    });
+
+    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
+      const list: AppBanner[] = snap.docs.map((d) => ({
+        id: d.id,
+        imageUrl: d.data().imageUrl || '',
+        redirectLink: d.data().redirectLink || '',
+        createdAt: d.data().createdAt || '',
+      }));
+      setBanners(list);
+    });
+
+    return () => {
+      unsubMembers();
+      unsubBanners();
+    };
+  }, []);
+
   // Handle Auth Success from AuthModal
   const handleAuthSuccess = (newProfile: UserProfile) => {
     setProfile(newProfile);
@@ -223,7 +250,7 @@ export default function App() {
       date: 'Just Now',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'Pending',
-      description: 'Wallet Deposit via QR Payment',
+      description: 'Wallet Deposit',
       screenshotUrl,
       userEmail,
     };
@@ -242,7 +269,7 @@ export default function App() {
           date: 'Just Now',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           status: 'Pending',
-          description: 'Wallet Deposit via QR Payment',
+          description: 'Wallet Deposit',
           screenshotUrl,
           createdAt: new Date().toISOString(),
         });
@@ -391,6 +418,7 @@ export default function App() {
         {activeTab === 'home' && (
           <HomeTab
             games={games}
+            banners={banners}
             onSelectGame={(game) => setSelectedGame(game)}
           />
         )}
@@ -415,7 +443,10 @@ export default function App() {
         )}
 
         {activeTab === 'admin' && (
-          <AdminTab adminEmail={profile.email || authUser?.email || 'bnyeshop@gmail.com'} />
+          <AdminTab
+            adminEmail={profile.email || authUser?.email || 'bnyeshop@gmail.com'}
+            teamMembers={teamMembers}
+          />
         )}
       </main>
 
@@ -423,6 +454,7 @@ export default function App() {
       <BottomNav
         activeTab={activeTab}
         userEmail={profile.email || authUser?.email || ''}
+        teamMembers={teamMembers}
         onSelectTab={(tab) => {
           setSelectedGame(null);
           setActiveTab(tab);

@@ -27,10 +27,16 @@ import {
   Unlock,
   Ban,
   Copy,
-  Check
+  Check,
+  Image as ImageIcon,
+  UserPlus,
+  Upload,
+  Link as LinkIcon,
+  Shield,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Transaction, UserProfile, Game, GameRequirement, TopupProduct } from '../types';
+import { Transaction, UserProfile, Game, GameRequirement, TopupProduct, AppBanner, TeamMember } from '../types';
 import { db } from '../lib/firebase';
 import {
   collection,
@@ -46,11 +52,24 @@ import { INITIAL_GAMES } from '../data/initialData';
 
 interface Props {
   adminEmail: string;
+  teamMembers?: string[];
 }
 
-export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
+export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
-  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'games'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'games' | 'banner' | 'members'>('overview');
+
+  const normalizedEmail = (adminEmail || '').toLowerCase().trim();
+  const isMasterAdmin = normalizedEmail === 'bnyeshop@gmail.com';
+
+  // Ensure added team members can ONLY access 'orders' or 'deposits'
+  useEffect(() => {
+    if (!isMasterAdmin) {
+      if (activeSection !== 'orders' && activeSection !== 'deposits') {
+        setActiveSection('orders');
+      }
+    }
+  }, [isMasterAdmin, activeSection]);
 
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
@@ -60,6 +79,49 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
   const [selectedScreenshotTx, setSelectedScreenshotTx] = useState<Transaction | null>(null);
   const [copyToast, setCopyToast] = useState<string>('');
+
+  // Banners & Team Members state
+  const [bannersList, setBannersList] = useState<AppBanner[]>([]);
+  const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>([]);
+
+  // Add/Edit Banner Modal state
+  const [isBannerModalOpen, setIsBannerModalOpen] = useState<boolean>(false);
+  const [editingBanner, setEditingBanner] = useState<AppBanner | null>(null);
+  const [bannerImageUrlInput, setBannerImageUrlInput] = useState<string>('');
+  const [bannerRedirectInput, setBannerRedirectInput] = useState<string>('');
+  const [bannerLoading, setBannerLoading] = useState<boolean>(false);
+
+  // Add Member state
+  const [memberEmailInput, setMemberEmailInput] = useState<string>('');
+  const [memberMsg, setMemberMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [memberAddLoading, setMemberAddLoading] = useState<boolean>(false);
+
+  // Firestore listeners for banners & team_members
+  useEffect(() => {
+    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
+      const list: AppBanner[] = snap.docs.map((d) => ({
+        id: d.id,
+        imageUrl: d.data().imageUrl || '',
+        redirectLink: d.data().redirectLink || '',
+        createdAt: d.data().createdAt || '',
+      }));
+      setBannersList(list);
+    });
+
+    const unsubMembers = onSnapshot(collection(db, 'team_members'), (snap) => {
+      const list: TeamMember[] = snap.docs.map((d) => ({
+        id: d.id,
+        email: d.data().email || '',
+        createdAt: d.data().createdAt || '',
+      }));
+      setTeamMembersList(list);
+    });
+
+    return () => {
+      unsubBanners();
+      unsubMembers();
+    };
+  }, []);
 
   const getRequirementsList = (tx: Transaction) => {
     if (tx.requirementsData && tx.requirementsData.length > 0) {
@@ -664,6 +726,99 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
     }
   };
 
+  // ================= BANNER HANDLERS =================
+  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setBannerImageUrlInput(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveBanner = async () => {
+    if (!bannerImageUrlInput.trim()) return;
+    setBannerLoading(true);
+    try {
+      if (editingBanner) {
+        await updateDoc(doc(db, 'banners', editingBanner.id), {
+          imageUrl: bannerImageUrlInput.trim(),
+          redirectLink: bannerRedirectInput.trim(),
+        });
+      } else {
+        const bannerId = `banner_${Date.now()}`;
+        await setDoc(doc(db, 'banners', bannerId), {
+          imageUrl: bannerImageUrlInput.trim(),
+          redirectLink: bannerRedirectInput.trim(),
+          createdAt: new Date().toISOString(),
+        });
+      }
+      setIsBannerModalOpen(false);
+      setEditingBanner(null);
+      setBannerImageUrlInput('');
+      setBannerRedirectInput('');
+    } catch (err) {
+      console.error('Error saving banner:', err);
+    } finally {
+      setBannerLoading(false);
+    }
+  };
+
+  const handleDeleteBanner = async (bannerId: string) => {
+    if (!confirm('Are you sure you want to delete this banner?')) return;
+    try {
+      await deleteDoc(doc(db, 'banners', bannerId));
+    } catch (err) {
+      console.error('Error deleting banner:', err);
+    }
+  };
+
+  // ================= ADD MEMBER HANDLERS =================
+  const handleAddMemberSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMemberMsg(null);
+    const rawEmail = memberEmailInput.trim().toLowerCase();
+
+    if (!rawEmail || !rawEmail.includes('@')) {
+      setMemberMsg({ type: 'error', text: 'Please enter a valid email address.' });
+      return;
+    }
+
+    const exists = teamMembersList.some((m) => m.email.toLowerCase() === rawEmail);
+    if (exists) {
+      setMemberMsg({ type: 'error', text: 'This email is already added as a team member.' });
+      return;
+    }
+
+    setMemberAddLoading(true);
+    try {
+      const memberId = `member_${Date.now()}`;
+      await setDoc(doc(db, 'team_members', memberId), {
+        email: rawEmail,
+        createdAt: new Date().toISOString(),
+      });
+      setMemberEmailInput('');
+      setMemberMsg({ type: 'success', text: `Member ${rawEmail} added successfully!` });
+    } catch (err) {
+      console.error('Error adding team member:', err);
+      setMemberMsg({ type: 'error', text: 'Failed to add team member. Please try again.' });
+    } finally {
+      setMemberAddLoading(false);
+    }
+  };
+
+  const handleDeleteMember = async (memberId: string, email: string) => {
+    if (!confirm(`Are you sure you want to remove ${email} from team members?`)) return;
+    try {
+      await deleteDoc(doc(db, 'team_members', memberId));
+    } catch (err) {
+      console.error('Error deleting member:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-28">
       {/* Clean White Top Header */}
@@ -751,44 +906,48 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                 </div>
 
                 <nav className="space-y-2">
-                  <button
-                    onClick={() => {
-                      setActiveSection('overview');
-                      setSelectedAdminGame(null);
-                      setDrawerOpen(false);
-                    }}
-                    id="drawer-nav-overview"
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
-                      activeSection === 'overview'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    <Sliders size={18} />
-                    <span>Dashboard Overview</span>
-                  </button>
+                  {isMasterAdmin && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setActiveSection('overview');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-overview"
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'overview'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <Sliders size={18} />
+                        <span>Dashboard Overview</span>
+                      </button>
 
-                  <button
-                    onClick={() => {
-                      setActiveSection('users');
-                      setSelectedAdminGame(null);
-                      setDrawerOpen(false);
-                    }}
-                    id="drawer-nav-users"
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
-                      activeSection === 'users'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Users size={18} />
-                      <span>Users</span>
-                    </div>
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                      {totalUsersCount}
-                    </span>
-                  </button>
+                      <button
+                        onClick={() => {
+                          setActiveSection('users');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-users"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'users'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Users size={18} />
+                          <span>Users</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {totalUsersCount}
+                        </span>
+                      </button>
+                    </>
+                  )}
 
                   <button
                     onClick={() => {
@@ -846,27 +1005,77 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                     )}
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setActiveSection('games');
-                      setSelectedAdminGame(null);
-                      setDrawerOpen(false);
-                    }}
-                    id="drawer-nav-games"
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
-                      activeSection === 'games'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Gamepad2 size={18} />
-                      <span>Games Management</span>
-                    </div>
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                      {gamesList.length}
-                    </span>
-                  </button>
+                  {isMasterAdmin && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setActiveSection('games');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-games"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'games'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Gamepad2 size={18} />
+                          <span>Games Management</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {gamesList.length}
+                        </span>
+                      </button>
+
+                      {/* Banner Navigation Option */}
+                      <button
+                        onClick={() => {
+                          setActiveSection('banner');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-banner"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'banner'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <ImageIcon size={18} />
+                          <span>Banner</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {bannersList.length}
+                        </span>
+                      </button>
+
+                      {/* Add Member Navigation Option */}
+                      <button
+                        onClick={() => {
+                          setActiveSection('members');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-members"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'members'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <UserPlus size={18} />
+                          <span>Add Member</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {teamMembersList.length}
+                        </span>
+                      </button>
+                    </>
+                  )}
                 </nav>
               </div>
 
@@ -1564,7 +1773,9 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                           )}
                         </div>
 
-                        <div className="text-base font-black text-slate-900">{tx.description}</div>
+                        <div className="text-base font-black text-slate-900">
+                          {tx.description === 'Wallet Deposit via QR Payment' ? 'Wallet Deposit' : (tx.description?.replace(/via QR Payment/gi, '').trim() || 'Wallet Deposit')}
+                        </div>
 
                         <div className="flex items-center gap-3 text-xs text-slate-600">
                           <span className="font-black text-emerald-600 text-base">
@@ -1915,6 +2126,219 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                           <Trash2 size={14} />
                         </button>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 6: BANNER MANAGEMENT */}
+        {activeSection === 'banner' && isMasterAdmin && (
+          <div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-2xs flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <ImageIcon className="text-indigo-600" size={22} />
+                  <span>Banner Management</span>
+                </h2>
+                <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                  Manage promotional banners displayed at the top of the Home page
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setEditingBanner(null);
+                  setBannerImageUrlInput('');
+                  setBannerRedirectInput('');
+                  setIsBannerModalOpen(true);
+                }}
+                id="add-banner-btn"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-2xs shrink-0"
+              >
+                <Plus size={16} />
+                <span>Add Banner</span>
+              </button>
+            </div>
+
+            {/* Banners List */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 px-1">
+                Available Banners ({bannersList.length})
+              </h3>
+
+              {bannersList.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3">
+                  <ImageIcon className="mx-auto text-slate-300" size={40} />
+                  <p className="text-sm font-bold text-slate-700">No Banners Added Yet</p>
+                  <p className="text-xs text-slate-400">
+                    Click "Add Banner" above to upload an image banner for the home tab.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {bannersList.map((banner) => (
+                    <div
+                      key={banner.id}
+                      className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xs flex flex-col justify-between"
+                    >
+                      <div className="relative aspect-[21/9] bg-slate-100 overflow-hidden border-b border-slate-100">
+                        <img
+                          src={banner.imageUrl}
+                          alt="Banner Preview"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+
+                      <div className="p-4 space-y-3">
+                        {banner.redirectLink ? (
+                          <div className="flex items-center gap-2 text-xs font-mono text-indigo-600 bg-indigo-50/70 p-2 rounded-xl border border-indigo-100 truncate">
+                            <ExternalLink size={14} className="shrink-0 text-indigo-500" />
+                            <a
+                              href={banner.redirectLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              {banner.redirectLink}
+                            </a>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">No redirect link set</p>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                          <button
+                            onClick={() => {
+                              setEditingBanner(banner);
+                              setBannerImageUrlInput(banner.imageUrl);
+                              setBannerRedirectInput(banner.redirectLink || '');
+                              setIsBannerModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Edit2 size={14} />
+                            <span>Edit</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteBanner(banner.id)}
+                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Trash2 size={14} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 7: ADD TEAM MEMBER */}
+        {activeSection === 'members' && isMasterAdmin && (
+          <div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-2xs">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <UserPlus className="text-indigo-600" size={22} />
+                <span>Add Team Member</span>
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                Add email address of members who can access Orders and Deposits in Admin Panel
+              </p>
+            </div>
+
+            {/* Form Card */}
+            <form
+              onSubmit={handleAddMemberSubmit}
+              className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs"
+            >
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Member Email Address
+                </label>
+                <input
+                  type="email"
+                  value={memberEmailInput}
+                  onChange={(e) => setMemberEmailInput(e.target.value)}
+                  placeholder="e.g. staff@gmail.com"
+                  id="add-member-email-input"
+                  className="w-full p-3.5 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm rounded-2xl outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+
+              {memberMsg && (
+                <div
+                  className={`p-3 rounded-2xl text-xs font-bold ${
+                    memberMsg.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  }`}
+                >
+                  {memberMsg.text}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={memberAddLoading}
+                id="add-member-submit-btn"
+                className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm rounded-2xl transition-all cursor-pointer shadow-md flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+              >
+                <UserPlus size={16} />
+                <span>{memberAddLoading ? 'Adding...' : 'Add Member'}</span>
+              </button>
+            </form>
+
+            {/* List of Added Team Members */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 px-1">
+                Authorized Members List ({teamMembersList.length})
+              </h3>
+
+              {teamMembersList.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-2">
+                  <Shield className="mx-auto text-slate-300" size={36} />
+                  <p className="text-sm font-bold text-slate-700">No Team Members Added</p>
+                  <p className="text-xs text-slate-400">
+                    Only the master admin account has access right now.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {teamMembersList.map((m) => (
+                    <div
+                      key={m.id}
+                      className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-2xs"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center font-black shrink-0">
+                          {m.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-extrabold text-slate-900 text-sm truncate">{m.email}</p>
+                          <span className="inline-block mt-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded-full text-[10px] uppercase">
+                            Orders & Deposits Access
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteMember(m.id, m.email)}
+                        className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all cursor-pointer border border-rose-200 shrink-0"
+                        title="Remove Member"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2329,6 +2753,105 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                 >
                   <Plus size={16} />
                   <span>Add</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 7: ADD / EDIT BANNER */}
+      <AnimatePresence>
+        {isBannerModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-900 text-base">
+                  {editingBanner ? 'Edit Banner' : 'Add New Banner'}
+                </h3>
+                <button
+                  onClick={() => setIsBannerModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Banner Image (Upload or URL)
+                  </label>
+                  <input
+                    type="text"
+                    value={bannerImageUrlInput}
+                    onChange={(e) => setBannerImageUrlInput(e.target.value)}
+                    placeholder="https://example.com/banner.jpg or upload below"
+                    id="banner-image-url-input"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                  />
+
+                  <div className="pt-1">
+                    <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl cursor-pointer transition-all border border-indigo-100">
+                      <Upload size={14} />
+                      <span>Upload Image File</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleBannerFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {bannerImageUrlInput && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block">
+                      Preview
+                    </label>
+                    <div className="aspect-[21/9] rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+                      <img
+                        src={bannerImageUrlInput}
+                        alt="Banner Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Redirect Link (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={bannerRedirectInput}
+                    onChange={(e) => setBannerRedirectInput(e.target.value)}
+                    placeholder="https://example.com or /topup/freefire"
+                    id="banner-redirect-link-input"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-xs rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setIsBannerModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveBanner}
+                  disabled={bannerLoading || !bannerImageUrlInput.trim()}
+                  id="save-banner-submit-btn"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {bannerLoading ? 'Saving...' : 'Save Banner'}
                 </button>
               </div>
             </div>

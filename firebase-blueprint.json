@@ -34,6 +34,25 @@
         "playerId": { "type": "string", "description": "In-game Player ID" }
       },
       "required": ["userId", "amount", "status"]
+    },
+    "banners": {
+      "title": "Banners",
+      "description": "App banners for featured promotional items",
+      "properties": {
+        "imageUrl": { "type": "string", "description": "Banner image URL or Base64" },
+        "redirectLink": { "type": "string", "description": "Optional redirect URL" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["imageUrl"]
+    },
+    "team_members": {
+      "title": "Team Members",
+      "description": "Authorized staff email addresses for orders and deposits access",
+      "properties": {
+        "email": { "type": "string", "description": "Email address of team member" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["email"]
     }
   }
 }

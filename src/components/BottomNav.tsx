@@ -6,10 +6,14 @@ interface Props {
   activeTab: TabType;
   onSelectTab: (tab: TabType) => void;
   userEmail?: string;
+  teamMembers?: string[];
 }
 
-export const BottomNav: React.FC<Props> = ({ activeTab, onSelectTab, userEmail }) => {
-  const isAdmin = userEmail?.toLowerCase() === 'bnyeshop@gmail.com';
+export const BottomNav: React.FC<Props> = ({ activeTab, onSelectTab, userEmail, teamMembers = [] }) => {
+  const normalizedEmail = (userEmail || '').toLowerCase().trim();
+  const isMasterAdmin = normalizedEmail === 'bnyeshop@gmail.com';
+  const isTeamMember = teamMembers.some((m) => m.toLowerCase().trim() === normalizedEmail);
+  const isAdmin = isMasterAdmin || isTeamMember;
 
   const tabs = [
     { id: 'home' as TabType, label: 'Home', icon: Home },

@@ -68,3 +68,17 @@ export interface UserProfile {
   blocked?: boolean;
 }
 
+export interface AppBanner {
+  id: string;
+  imageUrl: string;
+  redirectLink?: string;
+  createdAt?: string;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  createdAt?: string;
+}
+
+

@@ -7,7 +7,6 @@ interface Props {
 }
 
 export const HistoryTab: React.FC<Props> = ({ transactions }) => {
-  const [filter, setFilter] = useState<'all' | 'purchase' | 'deposit'>('all');
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
 
   const handleCopyOrderId = (orderId: string) => {
@@ -16,9 +15,12 @@ export const HistoryTab: React.FC<Props> = ({ transactions }) => {
     setTimeout(() => setCopiedOrderId(null), 2000);
   };
 
-  const filtered = filter === 'all' 
-    ? transactions 
-    : transactions.filter((t) => (filter === 'purchase' ? t.type === 'purchase' : t.type === 'deposit' || t.type === 'game_reward'));
+  // Sort transactions so Pending orders are always at the top
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    if (a.status === 'Pending' && b.status !== 'Pending') return -1;
+    if (a.status !== 'Pending' && b.status === 'Pending') return 1;
+    return 0;
+  });
 
   return (
     <div className="space-y-6 pb-24 max-w-xl mx-auto">
@@ -33,46 +35,18 @@ export const HistoryTab: React.FC<Props> = ({ transactions }) => {
             <p className="text-xs text-slate-500 font-medium">All game topups & wallet history</p>
           </div>
         </div>
-
-        {/* Filter Pills */}
-        <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-              filter === 'all' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('purchase')}
-            className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-              filter === 'purchase' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Orders
-          </button>
-          <button
-            onClick={() => setFilter('deposit')}
-            className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-              filter === 'deposit' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Wallet
-          </button>
-        </div>
       </div>
 
       {/* History Items List */}
       <div className="space-y-3.5">
-        {filtered.length === 0 ? (
+        {sortedTransactions.length === 0 ? (
           <div className="bg-white rounded-3xl p-8 text-center text-slate-400 space-y-2 border border-slate-200 shadow-sm">
             <History size={36} className="mx-auto text-slate-300" />
             <p className="font-bold text-base text-slate-700">No history found</p>
             <p className="text-xs">Your top up orders and wallet deposits will appear here.</p>
           </div>
         ) : (
-          filtered.map((tx) => {
+          sortedTransactions.map((tx) => {
             const isPurchase = tx.type === 'purchase' || tx.gameTitle;
             const displayOrderId = tx.orderId || `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
 
