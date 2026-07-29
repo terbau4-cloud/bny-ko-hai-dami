@@ -47,6 +47,8 @@ export interface Transaction {
   productPrice?: number;
   quantity?: number;
   playerId?: string;
+  userEmail?: string;
+  requirementsData?: { name: string; value: string }[];
 }
 
 export interface UserProfile {

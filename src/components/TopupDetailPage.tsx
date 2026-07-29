@@ -11,6 +11,7 @@ interface Props {
     product: TopupProduct;
     quantity: number;
     playerId: string;
+    requirementsData?: { name: string; value: string }[];
     totalAmount: number;
     orderId: string;
   }) => void;
@@ -25,6 +26,7 @@ export const TopupDetailPage: React.FC<Props> = ({
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<TopupProduct | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
+  const [reqValues, setReqValues] = useState<{ [reqId: string]: string }>({});
   const [playerId, setPlayerId] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
@@ -41,6 +43,7 @@ export const TopupDetailPage: React.FC<Props> = ({
       });
     }
     setQuantity(1);
+    setReqValues({});
     setPlayerId('');
     setErrorMsg('');
     setIsSuccess(false);
@@ -62,9 +65,12 @@ export const TopupDetailPage: React.FC<Props> = ({
   const hasRequirements = Boolean(game.requirements && game.requirements.length > 0);
 
   const handleConfirmPurchase = () => {
-    if (hasRequirements && !playerId.trim()) {
-      setErrorMsg(`Please enter required ${game.requirements?.[0]?.name || 'account details'} first.`);
-      return;
+    if (hasRequirements) {
+      const missingReq = game.requirements?.find((r) => !reqValues[r.id]?.trim());
+      if (missingReq) {
+        setErrorMsg(`Please enter required ${missingReq.name} first.`);
+        return;
+      }
     }
 
     if (totalAmount > walletBalance) {
@@ -75,6 +81,15 @@ export const TopupDetailPage: React.FC<Props> = ({
     const randomDigits = Math.floor(10000000 + Math.random() * 90000000).toString();
     const generatedOrderId = `BNY-${randomDigits}`;
 
+    const requirementsData = game.requirements?.map((r) => ({
+      name: r.name,
+      value: reqValues[r.id]?.trim() || '',
+    })) || [];
+
+    const mainPlayerId = requirementsData.length > 0
+      ? requirementsData.map((r) => `${r.name}: ${r.value}`).join(' | ')
+      : playerId.trim();
+
     setPlacedOrderId(generatedOrderId);
     setIsSuccess(true);
 
@@ -82,7 +97,8 @@ export const TopupDetailPage: React.FC<Props> = ({
       game,
       product: currentProduct,
       quantity,
-      playerId: playerId.trim(),
+      playerId: mainPlayerId,
+      requirementsData,
       totalAmount,
       orderId: generatedOrderId,
     });
@@ -169,9 +185,9 @@ export const TopupDetailPage: React.FC<Props> = ({
                         <UserCheck size={18} className="absolute left-3.5 top-3.5 text-indigo-600" />
                         <input
                           type={req.type === 'number' ? 'number' : 'text'}
-                          value={playerId}
+                          value={reqValues[req.id] || ''}
                           onChange={(e) => {
-                            setPlayerId(e.target.value);
+                            setReqValues((prev) => ({ ...prev, [req.id]: e.target.value }));
                             if (errorMsg) setErrorMsg('');
                           }}
                           placeholder={`Enter ${req.name}`}

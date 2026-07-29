@@ -8,7 +8,7 @@ interface Props {
 }
 
 export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance }) => {
-  const [amount, setAmount] = useState<string>('500');
+  const [amount, setAmount] = useState<string>('');
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
@@ -60,7 +60,7 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
       setSubmitted(false);
       setScreenshot(null);
       setFileName('');
-      setAmount('500');
+      setAmount('');
     }, 2800);
   };
 
@@ -242,9 +242,9 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
           <button
             type="submit"
             id="submit-payment-btn"
-            className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 text-base cursor-pointer"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 text-base cursor-pointer"
           >
-            <span>Add Money Now</span>
+            <span>Confirm</span>
             <ArrowRight size={20} />
           </button>
         </form>

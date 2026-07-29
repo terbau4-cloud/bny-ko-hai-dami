@@ -25,7 +25,9 @@ import {
   ChevronRight,
   Lock,
   Unlock,
-  Ban
+  Ban,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Transaction, UserProfile, Game, GameRequirement, TopupProduct } from '../types';
@@ -56,6 +58,25 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
+  const [selectedScreenshotTx, setSelectedScreenshotTx] = useState<Transaction | null>(null);
+  const [copyToast, setCopyToast] = useState<string>('');
+
+  const getRequirementsList = (tx: Transaction) => {
+    if (tx.requirementsData && tx.requirementsData.length > 0) {
+      return tx.requirementsData;
+    }
+    if (tx.playerId) {
+      if (tx.playerId.includes(':')) {
+        const parts = tx.playerId.split('|');
+        return parts.map((part) => {
+          const [k, v] = part.split(':');
+          return { name: k ? k.trim() : 'Requirement', value: v ? v.trim() : part.trim() };
+        });
+      }
+      return [{ name: 'Player Details', value: tx.playerId }];
+    }
+    return [];
+  };
 
   // Filter tabs & search for Orders
   const [ordersStatusTab, setOrdersStatusTab] = useState<'Pending' | 'Approved' | 'Rejected'>('Pending');
@@ -138,8 +159,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           gameTitle: data.gameTitle,
           gameIcon: data.gameIcon,
           productName: data.productName,
+          productPrice: data.productPrice,
           quantity: data.quantity,
           playerId: data.playerId,
+          userEmail: data.userEmail || '',
+          requirementsData: data.requirementsData || [],
           screenshotUrl: data.screenshotUrl,
         };
       });
@@ -246,8 +270,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
             gameTitle: data.gameTitle,
             gameIcon: data.gameIcon,
             productName: data.productName,
+            productPrice: data.productPrice,
             quantity: data.quantity,
             playerId: data.playerId,
+            userEmail: data.userEmail || '',
+            requirementsData: data.requirementsData || [],
             screenshotUrl: data.screenshotUrl,
           };
         });
@@ -933,70 +960,117 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
               </div>
             ) : (
               <div className="space-y-3">
-                {pendingOrdersList.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
-                  >
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                          {tx.orderId || 'ORDER'}
-                        </span>
-                        <span className="text-xs font-extrabold text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200">
-                          Pending
-                        </span>
-                        <span className="text-xs font-bold text-slate-400">{tx.time}</span>
-                      </div>
-
-                      <div className="text-base font-black text-slate-900">{tx.description}</div>
-
-                      <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
-                        {tx.playerId && (
-                          <span className="bg-white px-2.5 py-1 rounded font-mono font-bold text-slate-700 border border-slate-200 shadow-2xs">
-                            Player ID: {tx.playerId}
+                {pendingOrdersList.map((tx) => {
+                  const reqs = getRequirementsList(tx);
+                  return (
+                    <div
+                      key={tx.id}
+                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
+                    >
+                      <div className="space-y-2 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                            {tx.orderId || 'ORDER'}
                           </span>
-                        )}
-                        <span className="font-black text-emerald-600 text-sm">
-                          RS {tx.amount}
-                        </span>
-                      </div>
-                    </div>
+                          <span className="text-xs font-extrabold text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200">
+                            Pending
+                          </span>
+                          <span className="text-xs font-bold text-slate-400">{tx.time}</span>
+                          {tx.userEmail && (
+                            <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/50">
+                              ✉️ {tx.userEmail}
+                            </span>
+                          )}
+                        </div>
 
-                    {tx.screenshotUrl && (
-                      <div className="shrink-0">
+                        <div className="text-base font-black text-slate-900">
+                          {tx.gameTitle ? `${tx.gameTitle} - ` : ''}
+                          {tx.productName || tx.description}
+                        </div>
+
+                        <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
+                          <span className="bg-white px-2.5 py-1 rounded font-bold text-slate-700 border border-slate-200 shadow-2xs">
+                            Price: RS {tx.productPrice || tx.amount}
+                          </span>
+                          <span className="bg-white px-2.5 py-1 rounded font-bold text-slate-700 border border-slate-200 shadow-2xs">
+                            Qty: {tx.quantity || 1}
+                          </span>
+                          <span className="font-black text-emerald-600 text-sm">
+                            Total: RS {tx.amount}
+                          </span>
+                        </div>
+
+                        {reqs.length > 0 && (
+                          <div className="space-y-1 pt-1 border-t border-slate-200/60">
+                            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                              Game Requirements:
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {reqs.map((req, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-1.5 bg-indigo-50/80 border border-indigo-200/80 px-2.5 py-1 rounded-xl text-xs font-mono font-bold"
+                                >
+                                  <span className="text-indigo-600">{req.name}:</span>
+                                  <span className="text-slate-900 font-black">{req.value}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(req.value);
+                                      setCopyToast(`Copied ${req.name}!`);
+                                      setTimeout(() => setCopyToast(''), 1500);
+                                    }}
+                                    className="ml-1 bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 text-[10px] font-sans font-black flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                                    title={`Copy ${req.name}`}
+                                  >
+                                    <Copy size={11} />
+                                    <span>Copy</span>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {tx.screenshotUrl && (
+                        <div className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedScreenshotTx(tx);
+                              setSelectedScreenshot(tx.screenshotUrl || null);
+                            }}
+                            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Eye size={14} />
+                            <span>View Receipt</span>
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
                         <button
-                          type="button"
-                          onClick={() => setSelectedScreenshot(tx.screenshotUrl || null)}
-                          className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                          onClick={() => handleApproveOrder(tx)}
+                          id={`approve-order-${tx.id}`}
+                          className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
                         >
-                          <Eye size={14} />
-                          <span>View Receipt</span>
+                          <CheckCircle2 size={16} />
+                          <span>Approve</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleRejectOrder(tx.id)}
+                          id={`reject-order-${tx.id}`}
+                          className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <XCircle size={16} />
+                          <span>Reject</span>
                         </button>
                       </div>
-                    )}
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                      <button
-                        onClick={() => handleApproveOrder(tx)}
-                        id={`approve-order-${tx.id}`}
-                        className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle2 size={16} />
-                        <span>Approve</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleRejectOrder(tx.id)}
-                        id={`reject-order-${tx.id}`}
-                        className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <XCircle size={16} />
-                        <span>Reject</span>
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1229,70 +1303,111 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
 
               return (
                 <div className="space-y-3">
-                  {filteredOrders.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
-                    >
-                      <div className="space-y-1.5 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
-                            {tx.orderId || 'ORDER'}
-                          </span>
-                          <span
-                            className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
-                              tx.status === 'Approved' || tx.status === 'Completed'
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                : tx.status === 'Pending'
-                                ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                : 'bg-rose-100 text-rose-800 border-rose-200'
-                            }`}
-                          >
-                            {tx.status === 'Approved' ? 'Completed' : tx.status}
-                          </span>
-                          <span className="text-xs font-bold text-slate-400">{tx.time}</span>
-                        </div>
-
-                        <div className="text-base font-black text-slate-900 flex items-center gap-2">
-                          <span>{tx.gameTitle ? `${tx.gameTitle} - ` : ''}{tx.description}</span>
-                        </div>
-
-                        <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
-                          {tx.playerId && (
-                            <span className="bg-white px-2.5 py-1 rounded font-mono font-bold text-slate-700 border border-slate-200 shadow-2xs">
-                              Player ID: {tx.playerId}
+                  {filteredOrders.map((tx) => {
+                    const reqs = getRequirementsList(tx);
+                    return (
+                      <div
+                        key={tx.id}
+                        className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
+                      >
+                        <div className="space-y-2 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
+                              {tx.orderId || 'ORDER'}
                             </span>
+                            <span
+                              className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                                tx.status === 'Approved' || tx.status === 'Completed'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  : tx.status === 'Pending'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : 'bg-rose-100 text-rose-800 border-rose-200'
+                              }`}
+                            >
+                              {tx.status === 'Approved' ? 'Completed' : tx.status}
+                            </span>
+                            <span className="text-xs font-bold text-slate-400">{tx.time}</span>
+                            {tx.userEmail && (
+                              <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/50">
+                                ✉️ {tx.userEmail}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-base font-black text-slate-900 flex items-center gap-2">
+                            <span>{tx.gameTitle ? `${tx.gameTitle} - ` : ''}{tx.productName || tx.description}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
+                            <span className="bg-white px-2.5 py-1 rounded font-bold text-slate-700 border border-slate-200 shadow-2xs">
+                              Price: RS {tx.productPrice || tx.amount}
+                            </span>
+                            <span className="bg-white px-2.5 py-1 rounded font-bold text-slate-700 border border-slate-200 shadow-2xs">
+                              Qty: {tx.quantity || 1}
+                            </span>
+                            <span className="font-black text-emerald-600 text-sm">
+                              Total: RS {tx.amount}
+                            </span>
+                          </div>
+
+                          {reqs.length > 0 && (
+                            <div className="space-y-1 pt-1 border-t border-slate-200/60">
+                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                                Game Requirements:
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {reqs.map((req, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center gap-1.5 bg-indigo-50/80 border border-indigo-200/80 px-2.5 py-1 rounded-xl text-xs font-mono font-bold"
+                                  >
+                                    <span className="text-indigo-600">{req.name}:</span>
+                                    <span className="text-slate-900 font-black">{req.value}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(req.value);
+                                        setCopyToast(`Copied ${req.name}!`);
+                                        setTimeout(() => setCopyToast(''), 1500);
+                                      }}
+                                      className="ml-1 bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 text-[10px] font-sans font-black flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                                      title={`Copy ${req.name}`}
+                                    >
+                                      <Copy size={11} />
+                                      <span>Copy</span>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
-                          <span className="font-black text-emerald-600 text-sm">
-                            RS {tx.amount}
-                          </span>
                         </div>
+
+                        {/* Action Buttons for Pending orders */}
+                        {tx.status === 'Pending' && (
+                          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                            <button
+                              onClick={() => handleApproveOrder(tx)}
+                              id={`approve-order-${tx.id}`}
+                              className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle2 size={16} />
+                              <span>Approve</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleRejectOrder(tx.id)}
+                              id={`reject-order-${tx.id}`}
+                              className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <XCircle size={16} />
+                              <span>Reject</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
-
-                      {/* Action Buttons for Pending orders */}
-                      {tx.status === 'Pending' && (
-                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                          <button
-                            onClick={() => handleApproveOrder(tx)}
-                            id={`approve-order-${tx.id}`}
-                            className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <CheckCircle2 size={16} />
-                            <span>Approve</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleRejectOrder(tx.id)}
-                            id={`reject-order-${tx.id}`}
-                            className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <XCircle size={16} />
-                            <span>Reject</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
@@ -1416,6 +1531,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                             {tx.status === 'Approved' ? 'Completed' : tx.status}
                           </span>
                           <span className="text-xs font-bold text-slate-400">{tx.time}</span>
+                          {tx.userEmail && (
+                            <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/50">
+                              ✉️ {tx.userEmail}
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-base font-black text-slate-900">{tx.description}</div>
@@ -1431,7 +1551,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
                         {tx.screenshotUrl && (
                           <button
                             type="button"
-                            onClick={() => setSelectedScreenshot(tx.screenshotUrl || null)}
+                            onClick={() => {
+                              setSelectedScreenshotTx(tx);
+                              setSelectedScreenshot(tx.screenshotUrl || null);
+                            }}
                             className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl transition-all cursor-pointer"
                           >
                             <Eye size={14} />
@@ -1991,35 +2114,81 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
         )}
       </AnimatePresence>
 
-      {/* MODAL 4: SCREENSHOT PREVIEW */}
+      {/* MODAL 4: SCREENSHOT PREVIEW WITH DETAILS & APPROVE/REJECT */}
       <AnimatePresence>
-        {selectedScreenshot && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-4 space-y-4 text-center shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <h3 className="font-black text-slate-900 text-sm">Payment Screenshot Receipt</h3>
+        {(selectedScreenshotTx || selectedScreenshot) && (
+          <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-4 text-center shadow-2xl flex flex-col max-h-[92vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 text-white text-left">
+                <div>
+                  <h3 className="font-black text-white text-base">Payment Screenshot Receipt</h3>
+                  {selectedScreenshotTx && (
+                    <p className="text-xs text-indigo-400 font-mono font-bold mt-0.5">
+                      User: {selectedScreenshotTx.userEmail || 'User'} | Amount: RS {selectedScreenshotTx.amount}
+                    </p>
+                  )}
+                </div>
                 <button
-                  onClick={() => setSelectedScreenshot(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                  onClick={() => {
+                    setSelectedScreenshot(null);
+                    setSelectedScreenshotTx(null);
+                  }}
+                  className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl cursor-pointer transition-all"
+                  title="Close Preview"
                 >
-                  <X size={20} />
+                  <X size={22} />
                 </button>
               </div>
 
-              <div className="max-h-[70vh] overflow-auto rounded-2xl border border-slate-200 bg-black">
+              {/* Image Container */}
+              <div className="flex-1 overflow-auto rounded-2xl border border-slate-800 bg-black flex items-center justify-center p-2">
                 <img
-                  src={selectedScreenshot}
-                  alt="Payment Screenshot"
-                  className="w-full object-contain mx-auto"
+                  src={selectedScreenshotTx?.screenshotUrl || selectedScreenshot!}
+                  alt="Payment Screenshot Receipt"
+                  className="max-h-[65vh] w-auto object-contain mx-auto rounded-lg shadow-lg"
                 />
               </div>
 
-              <button
-                onClick={() => setSelectedScreenshot(null)}
-                className="w-full py-2.5 bg-indigo-600 text-white font-black text-xs rounded-xl cursor-pointer"
-              >
-                Close Preview
-              </button>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-1">
+                {selectedScreenshotTx && selectedScreenshotTx.status === 'Pending' ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        handleApproveOrder(selectedScreenshotTx);
+                        setSelectedScreenshotTx(null);
+                        setSelectedScreenshot(null);
+                      }}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md active:scale-95"
+                    >
+                      <CheckCircle2 size={18} />
+                      <span>Approve Deposit</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleRejectOrder(selectedScreenshotTx.id);
+                        setSelectedScreenshotTx(null);
+                        setSelectedScreenshot(null);
+                      }}
+                      className="flex-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/40 font-black py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 text-xs sm:text-sm active:scale-95"
+                    >
+                      <XCircle size={18} />
+                      <span>Reject Deposit</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setSelectedScreenshot(null);
+                      setSelectedScreenshotTx(null);
+                    }}
+                    className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-black text-xs rounded-xl cursor-pointer transition-all"
+                  >
+                    Close Preview {selectedScreenshotTx ? `(${selectedScreenshotTx.status})` : ''}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2138,6 +2307,23 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
               </div>
             </div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* COPY TOAST FLOATING NOTIFICATION */}
+      <AnimatePresence>
+        {copyToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className="fixed top-5 right-5 z-50 bg-slate-900 text-white font-black text-xs px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 border border-slate-700"
+          >
+            <div className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-bold">
+              <Check size={12} />
+            </div>
+            <span>{copyToast}</span>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

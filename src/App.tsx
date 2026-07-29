@@ -133,6 +133,9 @@ export default function App() {
                   productPrice: data.productPrice,
                   quantity: data.quantity,
                   playerId: data.playerId,
+                  userEmail: data.userEmail || '',
+                  requirementsData: data.requirementsData || [],
+                  screenshotUrl: data.screenshotUrl,
                 };
               });
               setTransactions(loadedTxs);
@@ -210,6 +213,8 @@ export default function App() {
   // Handle Wallet Top-Up Deposit
   const handleAddTransaction = async (amount: number, screenshotUrl: string) => {
     const orderId = `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
+    const userEmail = profile.email || authUser?.email || '';
+
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
       orderId,
@@ -217,38 +222,29 @@ export default function App() {
       amount,
       date: 'Just Now',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'Approved',
+      status: 'Pending',
       description: 'Wallet Deposit via QR Payment',
       screenshotUrl,
+      userEmail,
     };
 
     setTransactions((prev) => [newTx, ...prev]);
-
-    const updatedBalance = profile.walletBalance + amount;
-    setProfile((prev) => ({
-      ...prev,
-      walletBalance: updatedBalance,
-    }));
 
     // Firestore sync if user is logged in
     if (authUser) {
       try {
         await addDoc(collection(db, 'transactions'), {
           userId: authUser.uid,
+          userEmail,
           orderId,
           type: 'deposit',
           amount,
           date: 'Just Now',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: 'Approved',
+          status: 'Pending',
           description: 'Wallet Deposit via QR Payment',
           screenshotUrl,
           createdAt: new Date().toISOString(),
-        });
-
-        const userDocRef = doc(db, 'users', authUser.uid);
-        await updateDoc(userDocRef, {
-          walletBalance: updatedBalance,
         });
       } catch (err) {
         console.error('Error adding deposit to Firestore:', err);
@@ -262,10 +258,12 @@ export default function App() {
     product: TopupProduct;
     quantity: number;
     playerId: string;
+    requirementsData?: { name: string; value: string }[];
     totalAmount: number;
     orderId: string;
   }) => {
-    const { game, product, quantity, playerId, totalAmount, orderId } = orderData;
+    const { game, product, quantity, playerId, requirementsData, totalAmount, orderId } = orderData;
+    const userEmail = profile.email || authUser?.email || '';
 
     const newOrderTx: Transaction = {
       id: `tx_order_${Date.now()}`,
@@ -283,6 +281,8 @@ export default function App() {
       productPrice: product.price,
       quantity,
       playerId,
+      userEmail,
+      requirementsData,
     };
 
     setTransactions((prev) => [newOrderTx, ...prev]);
@@ -301,6 +301,7 @@ export default function App() {
       try {
         await addDoc(collection(db, 'transactions'), {
           userId: authUser.uid,
+          userEmail,
           orderId,
           type: 'purchase',
           amount: totalAmount,
@@ -315,6 +316,7 @@ export default function App() {
           productPrice: product.price,
           quantity,
           playerId,
+          requirementsData: requirementsData || [],
           createdAt: new Date().toISOString(),
         });
 
