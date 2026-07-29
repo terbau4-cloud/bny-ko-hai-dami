@@ -167,7 +167,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
             description: g.description || '',
             gameType: g.gameType || 'balloon',
             products: g.products || [],
-            requirements: g.requirements || [{ id: 'req_1', name: 'Player ID', type: 'number' }],
+            requirements: g.requirements || [],
           });
         }
         setGamesList(INITIAL_GAMES);
@@ -357,9 +357,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
           products: [
             { id: `prod_1`, name: '100 Credits', price: 150 }
           ],
-          requirements: [
-            { id: `req_1`, name: 'Player ID', type: 'number' }
-          ]
+          requirements: []
         };
         await setDoc(doc(db, 'games', newId), newGameData);
       }
@@ -691,90 +689,80 @@ export const AdminTab: React.FC<Props> = ({ adminEmail }) => {
       </AnimatePresence>
 
       <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
-        {/* Top 3 Quick Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div
-            onClick={() => {
-              setActiveSection('users');
-              setSelectedAdminGame(null);
-            }}
-            className={`p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden ${
-              activeSection === 'users'
-                ? 'bg-indigo-50 border-indigo-600 shadow-md ring-2 ring-indigo-500/20'
-                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-black uppercase tracking-wider text-indigo-600">
-                Total Users
-              </span>
-              <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                <Users size={20} />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-slate-900">{totalUsersCount}</div>
-            <p className="text-[11px] text-slate-500 font-semibold mt-1">
-              Registered gaming profiles
-            </p>
-          </div>
-
-          <div
-            onClick={() => {
-              setActiveSection('orders');
-              setSelectedAdminGame(null);
-            }}
-            className={`p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden ${
-              activeSection === 'orders'
-                ? 'bg-purple-50 border-purple-600 shadow-md ring-2 ring-purple-500/20'
-                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-black uppercase tracking-wider text-purple-600">
-                Total Orders
-              </span>
-              <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
-                <ShoppingBag size={20} />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-slate-900">{totalOrdersCount}</div>
-            <p className="text-[11px] text-slate-500 font-semibold mt-1">
-              All topups & deposits recorded
-            </p>
-          </div>
-
-          <div
-            onClick={() => {
-              setActiveSection('pending');
-              setSelectedAdminGame(null);
-            }}
-            className={`p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden ${
-              activeSection === 'pending'
-                ? 'bg-amber-50 border-amber-500 shadow-md ring-2 ring-amber-400/30'
-                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-black uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
-                <Clock size={14} /> Pending Orders
-              </span>
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
-                <AlertCircle size={20} />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-amber-600 flex items-center gap-2">
-              <span>{pendingOrdersCount}</span>
-              {pendingOrdersCount > 0 && (
-                <span className="text-xs font-bold text-amber-900 bg-amber-200 px-2.5 py-0.5 rounded-full animate-pulse">
-                  Action Needed
+        {/* Top 3 Quick Stat Cards - Only visible on Overview */}
+        {activeSection === 'overview' && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div
+              onClick={() => {
+                setActiveSection('users');
+                setSelectedAdminGame(null);
+              }}
+              className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-600">
+                  Total Users
                 </span>
-              )}
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                  <Users size={20} />
+                </div>
+              </div>
+              <div className="text-3xl font-black text-slate-900">{totalUsersCount}</div>
+              <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                Registered gaming profiles
+              </p>
             </div>
-            <p className="text-[11px] text-amber-700/80 font-semibold mt-1">
-              Awaiting admin approval
-            </p>
+
+            <div
+              onClick={() => {
+                setActiveSection('orders');
+                setSelectedAdminGame(null);
+              }}
+              className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-purple-600">
+                  Total Orders
+                </span>
+                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
+                  <ShoppingBag size={20} />
+                </div>
+              </div>
+              <div className="text-3xl font-black text-slate-900">{totalOrdersCount}</div>
+              <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                All topups & deposits recorded
+              </p>
+            </div>
+
+            <div
+              onClick={() => {
+                setActiveSection('pending');
+                setSelectedAdminGame(null);
+              }}
+              className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
+                  <Clock size={14} /> Pending Orders
+                </span>
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+                  <AlertCircle size={20} />
+                </div>
+              </div>
+              <div className="text-3xl font-black text-amber-600 flex items-center gap-2">
+                <span>{pendingOrdersCount}</span>
+                {pendingOrdersCount > 0 && (
+                  <span className="text-xs font-bold text-amber-900 bg-amber-200 px-2.5 py-0.5 rounded-full animate-pulse">
+                    Action Needed
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-amber-700/80 font-semibold mt-1">
+                Awaiting admin approval
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* SECTION 1: PENDING ORDERS */}
         {(activeSection === 'overview' || activeSection === 'pending') && (

@@ -157,6 +157,50 @@ export default function App() {
     };
   }, []);
 
+  // Listen for real-time updates to games collection in Firestore
+  useEffect(() => {
+    const qGames = query(collection(db, 'games'));
+    const unsubscribeGames = onSnapshot(
+      qGames,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedGames: Game[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              title: data.title || 'Untitled Game',
+              publisher: data.publisher || '',
+              category: data.category || 'action',
+              rating: data.rating || 4.8,
+              icon: data.icon || '🎮',
+              coverImg: data.coverImg || '',
+              color: data.color || 'from-indigo-600 to-purple-600',
+              bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
+              plays: data.plays || 100,
+              description: data.description || '',
+              gameType: data.gameType || 'balloon',
+              products: data.products || [],
+              requirements: data.requirements || [],
+            };
+          });
+          setGames(loadedGames);
+
+          // Update selected game if currently viewing detail page
+          setSelectedGame((prev) => {
+            if (!prev) return null;
+            const updated = loadedGames.find((g) => g.id === prev.id);
+            return updated || null;
+          });
+        }
+      },
+      (err) => {
+        console.error('App live games listener error:', err);
+      }
+    );
+
+    return () => unsubscribeGames();
+  }, []);
+
   // Handle Auth Success from AuthModal
   const handleAuthSuccess = (newProfile: UserProfile) => {
     setProfile(newProfile);
