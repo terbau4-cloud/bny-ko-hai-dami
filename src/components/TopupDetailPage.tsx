@@ -62,9 +62,17 @@ export const TopupDetailPage: React.FC<Props> = ({
       return;
     }
 
-    const missingReq = activeRequirements.find((r) => !reqValues[r.id]?.trim());
-    if (missingReq) {
-      setErrorMsg(`Please enter required ${missingReq.name} first.`);
+    const missingReqs = activeRequirements.filter((r) => !reqValues[r.id]?.trim());
+    if (missingReqs.length > 0) {
+      if (missingReqs.length === 1) {
+        setErrorMsg(`Please enter ${missingReqs[0].name}.`);
+      } else if (missingReqs.length === 2) {
+        setErrorMsg(`Please enter ${missingReqs[0].name} and ${missingReqs[1].name}.`);
+      } else {
+        const names = missingReqs.map((r) => r.name);
+        const last = names.pop();
+        setErrorMsg(`Please enter ${names.join(', ')} and ${last}.`);
+      }
       return;
     }
 

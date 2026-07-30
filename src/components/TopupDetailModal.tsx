@@ -25,12 +25,17 @@ export const TopupDetailModal: React.FC<Props> = ({
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<TopupProduct | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
-  const [playerId, setPlayerId] = useState<string>('');
+  const [reqValues, setReqValues] = useState<{ [reqId: string]: string }>({});
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [placedOrderId, setPlacedOrderId] = useState<string>('');
 
   const availableProducts: TopupProduct[] = (game && game.products && game.products.length > 0) ? game.products : [];
+
+  // Active game requirements fallback
+  const activeRequirements = (game && game.requirements && game.requirements.length > 0)
+    ? game.requirements
+    : [{ id: 'req_default', name: 'Player ID', type: 'number' as const }];
 
   // Set default selected product when game changes
   useEffect(() => {
@@ -40,7 +45,7 @@ export const TopupDetailModal: React.FC<Props> = ({
       setSelectedProduct(null);
     }
     setQuantity(1);
-    setPlayerId('');
+    setReqValues({});
     setErrorMsg('');
     setIsSuccess(false);
   }, [game]);
@@ -58,8 +63,17 @@ export const TopupDetailModal: React.FC<Props> = ({
       return;
     }
 
-    if (!playerId.trim()) {
-      setErrorMsg('Please enter your Player ID / User ID first.');
+    const missingReqs = activeRequirements.filter((r) => !reqValues[r.id]?.trim());
+    if (missingReqs.length > 0) {
+      if (missingReqs.length === 1) {
+        setErrorMsg(`Please enter ${missingReqs[0].name}.`);
+      } else if (missingReqs.length === 2) {
+        setErrorMsg(`Please enter ${missingReqs[0].name} and ${missingReqs[1].name}.`);
+      } else {
+        const names = missingReqs.map((r) => r.name);
+        const last = names.pop();
+        setErrorMsg(`Please enter ${names.join(', ')} and ${last}.`);
+      }
       return;
     }
 
@@ -72,6 +86,13 @@ export const TopupDetailModal: React.FC<Props> = ({
     const randomDigits = Math.floor(10000000 + Math.random() * 90000000).toString();
     const generatedOrderId = `BNY-${randomDigits}`;
 
+    const requirementsData = activeRequirements.map((r) => ({
+      name: r.name,
+      value: reqValues[r.id]?.trim() || '',
+    }));
+
+    const mainPlayerId = requirementsData.map((r) => `${r.name}: ${r.value}`).join(' | ');
+
     setPlacedOrderId(generatedOrderId);
     setIsSuccess(true);
 
@@ -79,7 +100,7 @@ export const TopupDetailModal: React.FC<Props> = ({
       game,
       product: selectedProduct,
       quantity,
-      playerId: playerId.trim(),
+      playerId: mainPlayerId,
       totalAmount,
       orderId: generatedOrderId,
     });
@@ -158,23 +179,33 @@ export const TopupDetailModal: React.FC<Props> = ({
               </motion.div>
             ) : (
               <>
-                {/* Step 1: Account ID */}
-                <div className="space-y-1.5">
+                {/* Step 1: Account / Requirements ID */}
+                <div className="space-y-3">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <UserCheck size={15} className="text-indigo-600" />
-                    1. Enter Player ID / User ID
+                    1. Account Requirements
                   </label>
-                  <input
-                    type="text"
-                    value={playerId}
-                    onChange={(e) => {
-                      setPlayerId(e.target.value);
-                      if (errorMsg) setErrorMsg('');
-                    }}
-                    placeholder="e.g. 123456789 (1234)"
-                    id="player-id-input"
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl text-slate-900 font-bold text-sm outline-none transition-colors"
-                  />
+                  <div className="space-y-2.5">
+                    {activeRequirements.map((req) => (
+                      <div key={req.id} className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 block">
+                          {req.name} <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type={req.type === 'number' ? 'text' : 'text'}
+                          inputMode={req.type === 'number' ? 'numeric' : 'text'}
+                          value={reqValues[req.id] || ''}
+                          onChange={(e) => {
+                            setReqValues((prev) => ({ ...prev, [req.id]: e.target.value }));
+                            if (errorMsg) setErrorMsg('');
+                          }}
+                          placeholder={`Enter ${req.name}...`}
+                          id={`req-input-${req.id}`}
+                          className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl text-slate-900 font-bold text-sm outline-none transition-colors"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Step 2: Select Package / Product */}

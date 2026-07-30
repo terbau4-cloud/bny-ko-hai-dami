@@ -65,7 +65,7 @@ interface PaymentQR {
 }
 
 // Canvas utility for compressing images before uploading to Firestore base64
-const compressImage = (file: File, maxWidth = 900, quality = 0.8): Promise<string> => {
+const compressImage = (file: File, maxWidth = 500, quality = 0.65): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -473,10 +473,49 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       (err) => console.error('Admin live games error:', err)
     );
 
+    // Listen for live updates on payment_qrs
+    const qPaymentQRs = query(collection(db, 'payment_qrs'));
+    const unsubscribePaymentQRs = onSnapshot(
+      qPaymentQRs,
+      (snapshot) => {
+        const qrs: PaymentQR[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            title: data.title || 'Payment QR Code',
+            imageUrl: data.imageUrl || '',
+            createdAt: data.createdAt,
+          };
+        });
+        setPaymentQRsList(qrs);
+      },
+      (err) => console.error('Admin live payment_qrs error:', err)
+    );
+
+    // Listen for live updates on banners
+    const qBanners = query(collection(db, 'banners'));
+    const unsubscribeBanners = onSnapshot(
+      qBanners,
+      (snapshot) => {
+        const bannersData: AppBanner[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            imageUrl: data.imageUrl || '',
+            redirectUrl: data.redirectUrl || '',
+          };
+        });
+        setBannersList(bannersData);
+      },
+      (err) => console.error('Admin live banners error:', err)
+    );
+
     return () => {
       unsubscribeUsers();
       unsubscribeTx();
       unsubscribeGames();
+      unsubscribePaymentQRs();
+      unsubscribeBanners();
     };
   }, []);
 
@@ -1026,7 +1065,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressedDataUrl = await compressImage(file, 800, 0.85);
+      const compressedDataUrl = await compressImage(file, 500, 0.65);
       setPaymentImgInput(compressedDataUrl);
     } catch (err) {
       console.error('Error compressing payment QR image:', err);
@@ -1048,16 +1087,25 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     setPaymentLoading(true);
     try {
       const title = paymentTitleInput.trim() || 'Payment QR Code';
+      let finalImg = paymentImgInput.trim();
+
+      // Ensure data URL is not exceeding Firestore document limits
+      if (finalImg.length > 900000) {
+        alert('The uploaded image is too large. Please select a smaller QR code image.');
+        setPaymentLoading(false);
+        return;
+      }
+
       if (editingPaymentQR) {
         await updateDoc(doc(db, 'payment_qrs', editingPaymentQR.id), {
           title,
-          imageUrl: paymentImgInput.trim(),
+          imageUrl: finalImg,
         });
       } else {
         const qrId = `qr_${Date.now()}`;
         await setDoc(doc(db, 'payment_qrs', qrId), {
           title,
-          imageUrl: paymentImgInput.trim(),
+          imageUrl: finalImg,
           createdAt: new Date().toISOString(),
         });
       }
@@ -1067,9 +1115,9 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       setPaymentImgInput('');
       setCopyToast('Payment QR saved successfully!');
       setTimeout(() => setCopyToast(''), 2500);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving payment QR:', err);
-      alert('Failed to save Payment QR.');
+      alert(`Failed to save Payment QR: ${err?.message || 'Please check image size and try again.'}`);
     } finally {
       setPaymentLoading(false);
     }
