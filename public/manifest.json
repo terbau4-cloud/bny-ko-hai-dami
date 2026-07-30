@@ -1,0 +1,24 @@
+{
+  "short_name": "BNY SHOP",
+  "name": "BNY SHOP - Game Topup Nepal",
+  "description": "BNY SHOP - Ultimate Game Top Up & Wallet Recharge Center for Nepal",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "portrait"
+}

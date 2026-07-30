@@ -10,6 +10,7 @@ import { ProfileTab } from './components/ProfileTab';
 import { AdminTab } from './components/AdminTab';
 import { TopupDetailPage } from './components/TopupDetailPage';
 import { AuthModal } from './components/AuthModal';
+import { InstallPwaModal } from './components/InstallPwaModal';
 
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import {
@@ -364,8 +365,20 @@ export default function App() {
     setActiveTab('history');
   };
 
-  const handleUpdateProfile = (updated: Partial<UserProfile>) => {
+  const handleUpdateProfile = async (updated: Partial<UserProfile>) => {
     setProfile((prev) => ({ ...prev, ...updated }));
+    if (authUser) {
+      try {
+        const userRef = doc(db, 'users', authUser.uid);
+        const dataToUpdate: any = { ...updated };
+        if (updated.name) {
+          dataToUpdate.fullName = updated.name;
+        }
+        await setDoc(userRef, dataToUpdate, { merge: true });
+      } catch (err) {
+        console.error('Error updating profile in Firestore:', err);
+      }
+    }
   };
 
   // If checking auth status
@@ -460,6 +473,9 @@ export default function App() {
           setActiveTab(tab);
         }}
       />
+
+      {/* PWA Install Prompt Popup */}
+      <InstallPwaModal />
     </div>
   );
 }
