@@ -1,10 +1,18 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { QrCode, Upload, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface Props {
   onAddTransaction: (amount: number, screenshotUrl: string) => void;
   currentBalance: number;
+}
+
+interface PaymentQR {
+  id: string;
+  title: string;
+  imageUrl: string;
 }
 
 export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance }) => {
@@ -13,8 +21,22 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
   const [fileName, setFileName] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [paymentQrs, setPaymentQrs] = useState<PaymentQR[]>([]);
+  const [selectedQrIndex, setSelectedQrIndex] = useState<number>(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'payment_qrs'), (snap) => {
+      const qrs: PaymentQR[] = snap.docs.map((d) => ({
+        id: d.id,
+        title: d.data().title || 'Payment QR',
+        imageUrl: d.data().imageUrl || '',
+      }));
+      setPaymentQrs(qrs);
+    });
+    return () => unsub();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -109,50 +131,84 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
               </h3>
             </div>
 
-            {/* SVG QR Code */}
-            <div className="flex flex-col items-center justify-center bg-slate-50 rounded-2xl p-6 border border-slate-200">
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 relative">
-                <svg
-                  className="w-48 h-48 sm:w-52 sm:h-52"
-                  viewBox="0 0 100 100"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <rect width="100" height="100" fill="white" rx="8" />
-                  <rect x="10" y="10" width="25" height="25" fill="#4F46E5" rx="4" />
-                  <rect x="14" y="14" width="17" height="17" fill="white" rx="2" />
-                  <rect x="18" y="18" width="9" height="9" fill="#4F46E5" rx="1" />
+            {/* Display Uploaded QR or Fallback SVG */}
+            <div className="flex flex-col items-center justify-center bg-slate-50 rounded-2xl p-6 border border-slate-200 gap-3">
+              {paymentQrs.length > 0 ? (
+                <>
+                  {paymentQrs.length > 1 && (
+                    <div className="flex items-center gap-2 flex-wrap justify-center mb-1">
+                      {paymentQrs.map((qr, idx) => (
+                        <button
+                          key={qr.id}
+                          type="button"
+                          onClick={() => setSelectedQrIndex(idx)}
+                          className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                            selectedQrIndex === idx
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {qr.title || `QR ${idx + 1}`}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                  <rect x="65" y="10" width="25" height="25" fill="#4F46E5" rx="4" />
-                  <rect x="69" y="14" width="17" height="17" fill="white" rx="2" />
-                  <rect x="73" y="18" width="9" height="9" fill="#4F46E5" rx="1" />
+                  <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 relative">
+                    <img
+                      src={paymentQrs[selectedQrIndex]?.imageUrl || paymentQrs[0]?.imageUrl}
+                      alt={paymentQrs[selectedQrIndex]?.title || 'Payment QR'}
+                      className="w-56 h-56 sm:w-64 sm:h-64 object-contain rounded-xl"
+                    />
+                  </div>
+                  <p className="text-xs font-bold text-slate-600">
+                    {paymentQrs[selectedQrIndex]?.title || 'Scan QR Code to Pay'}
+                  </p>
+                </>
+              ) : (
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 relative">
+                  <svg
+                    className="w-48 h-48 sm:w-52 sm:h-52"
+                    viewBox="0 0 100 100"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <rect width="100" height="100" fill="white" rx="8" />
+                    <rect x="10" y="10" width="25" height="25" fill="#4F46E5" rx="4" />
+                    <rect x="14" y="14" width="17" height="17" fill="white" rx="2" />
+                    <rect x="18" y="18" width="9" height="9" fill="#4F46E5" rx="1" />
 
-                  <rect x="10" y="65" width="25" height="25" fill="#4F46E5" rx="4" />
-                  <rect x="14" y="69" width="17" height="17" fill="white" rx="2" />
-                  <rect x="18" y="73" width="9" height="9" fill="#4F46E5" rx="1" />
+                    <rect x="65" y="10" width="25" height="25" fill="#4F46E5" rx="4" />
+                    <rect x="69" y="14" width="17" height="17" fill="white" rx="2" />
+                    <rect x="73" y="18" width="9" height="9" fill="#4F46E5" rx="1" />
 
-                  <rect x="40" y="10" width="8" height="8" fill="#1E293B" rx="1" />
-                  <rect x="52" y="10" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="40" y="22" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="52" y="22" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="10" y="65" width="25" height="25" fill="#4F46E5" rx="4" />
+                    <rect x="14" y="69" width="17" height="17" fill="white" rx="2" />
+                    <rect x="18" y="73" width="9" height="9" fill="#4F46E5" rx="1" />
 
-                  <rect x="10" y="40" width="8" height="8" fill="#1E293B" rx="1" />
-                  <rect x="22" y="40" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="10" y="52" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="22" y="52" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="40" y="10" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="52" y="10" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="40" y="22" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="52" y="22" width="8" height="8" fill="#1E293B" rx="1" />
 
-                  <rect x="65" y="40" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="77" y="40" width="8" height="8" fill="#1E293B" rx="1" />
-                  <rect x="65" y="52" width="8" height="8" fill="#1E293B" rx="1" />
-                  <rect x="77" y="52" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="10" y="40" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="22" y="40" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="10" y="52" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="22" y="52" width="8" height="8" fill="#1E293B" rx="1" />
 
-                  <rect x="40" y="65" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="52" y="65" width="8" height="8" fill="#1E293B" rx="1" />
-                  <rect x="40" y="77" width="8" height="8" fill="#1E293B" rx="1" />
-                  <rect x="52" y="77" width="8" height="8" fill="#4F46E5" rx="1" />
-                  <rect x="65" y="77" width="20" height="8" fill="#4F46E5" rx="1" />
-                </svg>
-              </div>
+                    <rect x="65" y="40" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="77" y="40" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="65" y="52" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="77" y="52" width="8" height="8" fill="#4F46E5" rx="1" />
+
+                    <rect x="40" y="65" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="52" y="65" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="40" y="77" width="8" height="8" fill="#1E293B" rx="1" />
+                    <rect x="52" y="77" width="8" height="8" fill="#4F46E5" rx="1" />
+                    <rect x="65" y="77" width="20" height="8" fill="#4F46E5" rx="1" />
+                  </svg>
+                </div>
+              )}
             </div>
           </div>
 

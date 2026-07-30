@@ -33,7 +33,9 @@ import {
   Upload,
   Link as LinkIcon,
   Shield,
-  ExternalLink
+  ExternalLink,
+  FileText,
+  QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Transaction, UserProfile, Game, GameRequirement, TopupProduct, AppBanner, TeamMember } from '../types';
@@ -55,9 +57,48 @@ interface Props {
   teamMembers?: string[];
 }
 
+interface PaymentQR {
+  id: string;
+  title: string;
+  imageUrl: string;
+  createdAt?: string;
+}
+
+// Canvas utility for compressing images before uploading to Firestore base64
+const compressImage = (file: File, maxWidth = 900, quality = 0.8): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
-  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'games' | 'banner' | 'members'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'games' | 'banner' | 'members' | 'payment'>('overview');
 
   const normalizedEmail = (adminEmail || '').toLowerCase().trim();
   const isMasterAdmin = normalizedEmail === 'bnyeshop@gmail.com';
@@ -80,9 +121,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [selectedScreenshotTx, setSelectedScreenshotTx] = useState<Transaction | null>(null);
   const [copyToast, setCopyToast] = useState<string>('');
 
-  // Banners & Team Members state
+  // Banners, Team Members & Payment QRs state
   const [bannersList, setBannersList] = useState<AppBanner[]>([]);
   const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>([]);
+  const [paymentQRsList, setPaymentQRsList] = useState<PaymentQR[]>([]);
 
   // Add/Edit Banner Modal state
   const [isBannerModalOpen, setIsBannerModalOpen] = useState<boolean>(false);
@@ -91,12 +133,19 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [bannerRedirectInput, setBannerRedirectInput] = useState<string>('');
   const [bannerLoading, setBannerLoading] = useState<boolean>(false);
 
+  // Add/Edit Payment QR Modal state
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
+  const [editingPaymentQR, setEditingPaymentQR] = useState<PaymentQR | null>(null);
+  const [paymentTitleInput, setPaymentTitleInput] = useState<string>('');
+  const [paymentImgInput, setPaymentImgInput] = useState<string>('');
+  const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
+
   // Add Member state
   const [memberEmailInput, setMemberEmailInput] = useState<string>('');
   const [memberMsg, setMemberMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [memberAddLoading, setMemberAddLoading] = useState<boolean>(false);
 
-  // Firestore listeners for banners & team_members
+  // Firestore listeners for banners, team_members & payment_qrs
   useEffect(() => {
     const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
       const list: AppBanner[] = snap.docs.map((d) => ({
@@ -117,9 +166,20 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       setTeamMembersList(list);
     });
 
+    const unsubQRs = onSnapshot(collection(db, 'payment_qrs'), (snap) => {
+      const list: PaymentQR[] = snap.docs.map((d) => ({
+        id: d.id,
+        title: d.data().title || 'Payment QR',
+        imageUrl: d.data().imageUrl || '',
+        createdAt: d.data().createdAt || '',
+      }));
+      setPaymentQRsList(list);
+    });
+
     return () => {
       unsubBanners();
       unsubMembers();
+      unsubQRs();
     };
   }, []);
 
@@ -202,6 +262,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [editingProduct, setEditingProduct] = useState<TopupProduct | null>(null);
   const [prodNameInput, setProdNameInput] = useState<string>('');
   const [prodPriceInput, setProdPriceInput] = useState<string>('');
+
+  // Bulk Product Paste State
+  const [bulkListInput, setBulkListInput] = useState<string>('');
+  const [bulkImportLoading, setBulkImportLoading] = useState<boolean>(false);
 
   // Fetch Firestore users, transactions & games
   const fetchData = async () => {
@@ -726,17 +790,147 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
   };
 
-  // ================= BANNER HANDLERS =================
-  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Bulk parse product list helper
+  const parsePastedProductList = (rawText: string): { name: string; price: number }[] => {
+    if (!rawText || !rawText.trim()) return [];
+    const lines = rawText.split('\n');
+    const results: { name: string; price: number }[] = [];
+
+    for (let rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      let matchedName = '';
+      let matchedPrice = 0;
+
+      // 1. Try splitting by common separators: -, =, :, |, tab, comma
+      const parts = line.split(/[-=|:\t,]/);
+      if (parts.length >= 2) {
+        const lastPart = parts[parts.length - 1].trim();
+        const firstParts = parts.slice(0, parts.length - 1).join(' - ').trim();
+
+        const cleanPriceStr = lastPart.replace(/[^0-9.]/g, '');
+        const pNum = parseFloat(cleanPriceStr);
+
+        if (!isNaN(pNum) && pNum > 0 && firstParts.length > 0) {
+          matchedName = firstParts.replace(/^(?:Rs\.?|NPR|NRs|₹)\s*/i, '').trim();
+          matchedPrice = pNum;
+        }
+      }
+
+      // 2. Trailing price pattern search
+      if (!matchedPrice) {
+        const match = line.match(/(.*?)(?:[-=|:\t,]|(?:\b(?:Rs\.?|NPR|NRs|₹)\b))?\s*(\d+(?:\.\d+)?)\s*$/i);
+        if (match) {
+          const namePart = match[1].trim().replace(/[-=|:\t,]+$/, '').trim();
+          const pricePart = parseFloat(match[2]);
+          if (namePart && !isNaN(pricePart) && pricePart > 0) {
+            matchedName = namePart;
+            matchedPrice = pricePart;
+          }
+        }
+      }
+
+      // 3. Fallback space token
+      if (!matchedPrice) {
+        const tokens = line.split(/\s+/);
+        if (tokens.length >= 2) {
+          const lastToken = tokens[tokens.length - 1].replace(/[^0-9.]/g, '');
+          const pNum = parseFloat(lastToken);
+          if (!isNaN(pNum) && pNum > 0) {
+            matchedName = tokens.slice(0, tokens.length - 1).join(' ');
+            matchedPrice = pNum;
+          }
+        }
+      }
+
+      if (matchedName && matchedPrice > 0) {
+        matchedName = matchedName.replace(/^[-=|:\s,]+|[-=|:\s,]+$/g, '').trim();
+        if (matchedName) {
+          results.push({ name: matchedName, price: matchedPrice });
+        }
+      }
+    }
+
+    return results;
+  };
+
+  const handleDetectAndAddProducts = async () => {
+    if (!selectedAdminGame || !bulkListInput.trim()) return;
+    const detectedItems = parsePastedProductList(bulkListInput);
+
+    if (detectedItems.length === 0) {
+      alert('Could not detect any valid product names and prices from the list. Example format:\n100 Diamonds - Rs 140\n210 Diamonds - 280\n500 Diamonds = 650');
+      return;
+    }
+
+    setBulkImportLoading(true);
+    try {
+      const currentProds = selectedAdminGame.products || [];
+      const newProds: TopupProduct[] = detectedItems.map((item, idx) => ({
+        id: `prod_${Date.now()}_${idx}`,
+        name: item.name,
+        price: item.price,
+      }));
+
+      const updatedProds = [...currentProds, ...newProds];
+
+      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
+        products: updatedProds,
+      });
+
+      setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
+      setBulkListInput('');
+      setIsProductModalOpen(false);
+      setEditingProduct(null);
+      setProdNameInput('');
+      setProdPriceInput('');
+      setCopyToast(`Successfully detected and added ${newProds.length} products!`);
+      setTimeout(() => setCopyToast(''), 3000);
+    } catch (err) {
+      console.error('Error adding detected bulk products:', err);
+      alert('Failed to save bulk products. Please try again.');
+    } finally {
+      setBulkImportLoading(false);
+    }
+  };
+
+  // Game Logo Upload handler using image compressor
+  const handleGameLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        setBannerImageUrlInput(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedDataUrl = await compressImage(file, 600, 0.85);
+      setGameLogoInput(compressedDataUrl);
+    } catch (err) {
+      console.error('Error compressing game logo image:', err);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setGameLogoInput(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // ================= BANNER HANDLERS =================
+  const handleBannerFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressedDataUrl = await compressImage(file, 1200, 0.85);
+      setBannerImageUrlInput(compressedDataUrl);
+    } catch (err) {
+      console.error('Error compressing banner image:', err);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setBannerImageUrlInput(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSaveBanner = async () => {
@@ -762,6 +956,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       setBannerRedirectInput('');
     } catch (err) {
       console.error('Error saving banner:', err);
+      alert('Failed to save banner. Please try again.');
     } finally {
       setBannerLoading(false);
     }
@@ -773,6 +968,72 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       await deleteDoc(doc(db, 'banners', bannerId));
     } catch (err) {
       console.error('Error deleting banner:', err);
+    }
+  };
+
+  // ================= PAYMENT QR HANDLERS =================
+  const handlePaymentQRFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressedDataUrl = await compressImage(file, 800, 0.85);
+      setPaymentImgInput(compressedDataUrl);
+    } catch (err) {
+      console.error('Error compressing payment QR image:', err);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setPaymentImgInput(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSavePaymentQR = async () => {
+    if (!paymentImgInput.trim()) {
+      alert('Please upload or provide a Payment QR image!');
+      return;
+    }
+    setPaymentLoading(true);
+    try {
+      const title = paymentTitleInput.trim() || 'Payment QR Code';
+      if (editingPaymentQR) {
+        await updateDoc(doc(db, 'payment_qrs', editingPaymentQR.id), {
+          title,
+          imageUrl: paymentImgInput.trim(),
+        });
+      } else {
+        const qrId = `qr_${Date.now()}`;
+        await setDoc(doc(db, 'payment_qrs', qrId), {
+          title,
+          imageUrl: paymentImgInput.trim(),
+          createdAt: new Date().toISOString(),
+        });
+      }
+      setIsPaymentModalOpen(false);
+      setEditingPaymentQR(null);
+      setPaymentTitleInput('');
+      setPaymentImgInput('');
+      setCopyToast('Payment QR saved successfully!');
+      setTimeout(() => setCopyToast(''), 2500);
+    } catch (err) {
+      console.error('Error saving payment QR:', err);
+      alert('Failed to save Payment QR.');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleDeletePaymentQR = async (qrId: string) => {
+    if (!confirm('Are you sure you want to delete this Payment QR code?')) return;
+    try {
+      await deleteDoc(doc(db, 'payment_qrs', qrId));
+      setCopyToast('Payment QR deleted!');
+      setTimeout(() => setCopyToast(''), 2000);
+    } catch (err) {
+      console.error('Error deleting payment QR:', err);
+      alert('Failed to delete Payment QR.');
     }
   };
 
@@ -966,15 +1227,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                       <ShoppingBag size={18} />
                       <span>Orders</span>
                     </div>
-                    {pendingOrdersCount > 0 ? (
-                      <span className="bg-amber-400 text-slate-950 font-black text-xs px-2 py-0.5 rounded-full">
-                        {pendingOrdersCount}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                        {totalOrdersCount}
-                      </span>
-                    )}
+                    <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full ${
+                      pendingOrdersCount > 0
+                        ? 'bg-amber-400 text-slate-950 font-black'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {pendingOrdersCount}
+                    </span>
                   </button>
 
                   <button
@@ -994,15 +1253,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                       <Wallet size={18} />
                       <span>Deposits</span>
                     </div>
-                    {pendingDepositsCount > 0 ? (
-                      <span className="bg-amber-400 text-slate-950 font-black text-xs px-2 py-0.5 rounded-full">
-                        {pendingDepositsCount}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                        {totalDepositsCount}
-                      </span>
-                    )}
+                    <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full ${
+                      pendingDepositsCount > 0
+                        ? 'bg-amber-400 text-slate-950 font-black'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {pendingDepositsCount}
+                    </span>
                   </button>
 
                   {isMasterAdmin && (
@@ -1049,6 +1306,29 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                         </div>
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                           {bannersList.length}
+                        </span>
+                      </button>
+
+                      {/* Payment Setting Navigation Option */}
+                      <button
+                        onClick={() => {
+                          setActiveSection('payment');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-payment"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'payment'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <QrCode size={18} />
+                          <span>Payment Setting</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {paymentQRsList.length}
                         </span>
                       </button>
 
@@ -2074,6 +2354,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                     setEditingProduct(null);
                     setProdNameInput('');
                     setProdPriceInput('');
+                    setBulkListInput('');
                     setIsProductModalOpen(true);
                   }}
                   id="add-product-btn"
@@ -2184,15 +2465,20 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                       key={banner.id}
                       className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xs flex flex-col justify-between"
                     >
-                      <div className="relative aspect-[21/9] bg-slate-100 overflow-hidden border-b border-slate-100">
-                        <img
-                          src={banner.imageUrl}
-                          alt="Banner Preview"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                      <div className="relative h-44 sm:h-48 bg-slate-900 overflow-hidden border-b border-slate-100 flex items-center justify-center">
+                        {banner.imageUrl ? (
+                          <img
+                            src={banner.imageUrl}
+                            alt="Banner Preview"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-slate-400 text-xs font-bold flex items-center gap-2">
+                            <ImageIcon size={20} />
+                            <span>No Image</span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="p-4 space-y-3">
@@ -2234,6 +2520,104 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                             <span>Delete</span>
                           </button>
                         </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 8: PAYMENT SETTING */}
+        {activeSection === 'payment' && isMasterAdmin && (
+          <div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-2xs flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <QrCode className="text-indigo-600" size={22} />
+                  <span>Payment Setting</span>
+                </h2>
+                <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                  Manage payment QR codes (eSewa, Khalti, Bank) displayed in the user Deposit tab
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setEditingPaymentQR(null);
+                  setPaymentTitleInput('');
+                  setPaymentImgInput('');
+                  setIsPaymentModalOpen(true);
+                }}
+                id="add-payment-qr-btn"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-2xs shrink-0"
+              >
+                <Plus size={16} />
+                <span>Add Payment QR</span>
+              </button>
+            </div>
+
+            {/* List of Recent QRs */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 px-1">
+                Recent Payment QRs ({paymentQRsList.length})
+              </h3>
+
+              {paymentQRsList.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3">
+                  <QrCode className="mx-auto text-slate-300" size={40} />
+                  <p className="text-sm font-bold text-slate-700">No Payment QR Codes Added Yet</p>
+                  <p className="text-xs text-slate-400">
+                    Click "Add Payment QR" above to upload payment QR codes for manual deposit.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {paymentQRsList.map((qr) => (
+                    <div
+                      key={qr.id}
+                      className="bg-white border border-slate-200 rounded-3xl p-4 shadow-2xs space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-slate-900 text-sm">{qr.title}</span>
+                          <span className="text-[10px] font-mono text-slate-400">QR Code</span>
+                        </div>
+                        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex items-center justify-center h-48 overflow-hidden">
+                          {qr.imageUrl ? (
+                            <img
+                              src={qr.imageUrl}
+                              alt={qr.title}
+                              className="w-full h-full object-contain rounded-xl"
+                            />
+                          ) : (
+                            <span className="text-xs text-slate-400 font-bold">No Image</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          onClick={() => {
+                            setEditingPaymentQR(qr);
+                            setPaymentTitleInput(qr.title);
+                            setPaymentImgInput(qr.imageUrl);
+                            setIsPaymentModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-indigo-100"
+                        >
+                          <Edit2 size={14} />
+                          <span>Edit</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeletePaymentQR(qr.id)}
+                          className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-rose-100"
+                        >
+                          <Trash2 size={14} />
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2380,31 +2764,44 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                    Upload Logo / Image URL
+                    Upload Game Logo Image
                   </label>
-                  <input
-                    type="text"
-                    value={gameLogoInput}
-                    onChange={(e) => setGameLogoInput(e.target.value)}
-                    placeholder="e.g. https://example.com/logo.png"
-                    id="game-logo-input"
-                    className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
-                  />
+                  <label className="flex flex-col items-center justify-center p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-100/80 transition-all text-center">
+                    <Upload size={22} className="text-indigo-600 mb-1" />
+                    <span className="text-xs font-bold text-slate-700">Click to Upload Game Logo</span>
+                    <span className="text-[10px] text-slate-400 font-medium">PNG, JPG or WEBP from device</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleGameLogoFileUpload}
+                      id="game-logo-file-input"
+                      className="hidden"
+                    />
+                  </label>
                 </div>
 
                 {gameLogoInput && (
-                  <div className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                    <img
-                      src={gameLogoInput}
-                      alt="Preview"
-                      className="w-10 h-10 rounded-lg object-cover border border-slate-200"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                    <span className="text-xs font-semibold text-slate-500">Image Preview</span>
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={gameLogoInput}
+                        alt="Game Logo Preview"
+                        className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-2xs"
+                      />
+                      <div>
+                        <p className="text-xs font-extrabold text-slate-900">Game Logo Uploaded</p>
+                        <p className="text-[10px] text-emerald-600 font-bold">Ready to Save</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGameLogoInput('')}
+                      className="text-xs font-bold text-rose-600 hover:text-rose-700 px-2 py-1 bg-rose-50 rounded-lg cursor-pointer"
+                    >
+                      Remove
+                    </button>
                   </div>
                 )}
               </div>
@@ -2501,13 +2898,16 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       <AnimatePresence>
         {isProductModalOpen && (
           <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="font-black text-slate-900 text-base">
                   {editingProduct ? 'Edit Product' : 'Add Product / Package'}
                 </h3>
                 <button
-                  onClick={() => setIsProductModalOpen(false)}
+                  onClick={() => {
+                    setIsProductModalOpen(false);
+                    setBulkListInput('');
+                  }}
                   className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
                 >
                   <X size={20} />
@@ -2542,21 +2942,287 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                     className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
                   />
                 </div>
+
+                {/* BULK LIST PASTE OPTION BELOW PRODUCT PRICE */}
+                {!editingProduct && (
+                  <div className="pt-3 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-indigo-900 uppercase tracking-wider block flex items-center gap-1.5">
+                        <FileText size={15} className="text-indigo-600" />
+                        <span>Or Paste Product List (Bulk Import)</span>
+                      </label>
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                        Fast Import
+                      </span>
+                    </div>
+
+                    <textarea
+                      value={bulkListInput}
+                      onChange={(e) => setBulkListInput(e.target.value)}
+                      placeholder={`Paste product list here, e.g.:\n100 Diamonds - Rs 140\n210 Diamonds - 280\n500 Diamonds = 650\nWeekly Membership : 210`}
+                      id="bulk-product-list-textarea"
+                      rows={4}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs rounded-xl outline-none focus:border-indigo-600 focus:bg-white resize-y"
+                    />
+
+                    {/* LIVE DETECTED PREVIEW & ACTION */}
+                    {bulkListInput.trim() && (
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-2xl space-y-2.5">
+                        <div className="flex items-center justify-between text-xs font-extrabold text-indigo-950">
+                          <span>Detected Products Preview</span>
+                          <span className="bg-indigo-600 text-white font-mono px-2 py-0.5 rounded-full text-[11px]">
+                            {parsePastedProductList(bulkListInput).length} items found
+                          </span>
+                        </div>
+
+                        {parsePastedProductList(bulkListInput).length > 0 ? (
+                          <div className="max-h-32 overflow-y-auto space-y-1 divide-y divide-indigo-100/60 pr-1">
+                            {parsePastedProductList(bulkListInput).map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-xs pt-1 first:pt-0">
+                                <span className="font-bold text-slate-800 truncate">{item.name}</span>
+                                <span className="font-mono font-black text-indigo-700 shrink-0 ml-2">RS {item.price}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-amber-700 font-medium italic">
+                            No valid products detected yet. Ensure each line has product title and price (e.g. 100 Diamonds - Rs 140).
+                          </p>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleDetectAndAddProducts}
+                          disabled={bulkImportLoading || parsePastedProductList(bulkListInput).length === 0}
+                          id="detect-add-products-btn"
+                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-98"
+                        >
+                          <Sparkles size={14} />
+                          <span>
+                            {bulkImportLoading
+                              ? 'Adding Products...'
+                              : `Detect & Add Products (${parsePastedProductList(bulkListInput).length})`}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <button
-                  onClick={() => setIsProductModalOpen(false)}
+                  onClick={() => {
+                    setIsProductModalOpen(false);
+                    setBulkListInput('');
+                  }}
                   className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveProduct}
+                  disabled={!prodNameInput.trim() || !prodPriceInput.trim()}
                   id="save-product-submit-btn"
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50"
                 >
-                  Save Product
+                  Save Single Product
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: ADD / EDIT BANNER */}
+      <AnimatePresence>
+        {isBannerModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-900 text-base">
+                  {editingBanner ? 'Edit Banner' : 'Add New Banner'}
+                </h3>
+                <button
+                  onClick={() => setIsBannerModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Upload Banner File */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Upload Banner Image
+                  </label>
+                  <label className="flex flex-col items-center justify-center p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-100/80 transition-all text-center">
+                    <Upload size={24} className="text-indigo-600 mb-1" />
+                    <span className="text-xs font-bold text-slate-700">Click to Upload Banner Image</span>
+                    <span className="text-[10px] text-slate-400 font-medium">PNG, JPG or WEBP from device</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBannerFileUpload}
+                      id="banner-file-upload-input"
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Banner Image URL Option */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Or Banner Image URL
+                  </label>
+                  <input
+                    type="text"
+                    value={bannerImageUrlInput}
+                    onChange={(e) => setBannerImageUrlInput(e.target.value)}
+                    placeholder="e.g. https://example.com/banner.jpg"
+                    id="banner-url-input"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                  />
+                </div>
+
+                {/* Redirect Link (Optional) */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Redirect / Target Link (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={bannerRedirectInput}
+                    onChange={(e) => setBannerRedirectInput(e.target.value)}
+                    placeholder="e.g. https://chat.whatsapp.com/..."
+                    id="banner-redirect-input"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                  />
+                </div>
+
+                {/* Live Banner Preview */}
+                {bannerImageUrlInput && (
+                  <div className="p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1.5">
+                    <p className="text-xs font-bold text-indigo-300">Live Banner Preview:</p>
+                    <div className="relative rounded-xl overflow-hidden h-36 border border-slate-800 flex items-center justify-center">
+                      <img
+                        src={bannerImageUrlInput}
+                        alt="Banner Preview"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsBannerModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl cursor-pointer transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBanner}
+                  disabled={bannerLoading || !bannerImageUrlInput.trim()}
+                  id="save-banner-submit-btn"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50 transition-all"
+                >
+                  {bannerLoading ? 'Saving...' : 'Save Banner'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: ADD / EDIT PAYMENT QR */}
+      <AnimatePresence>
+        {isPaymentModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-900 text-base">
+                  {editingPaymentQR ? 'Edit Payment QR Code' : 'Add New Payment QR Code'}
+                </h3>
+                <button
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Payment Provider Title
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentTitleInput}
+                    onChange={(e) => setPaymentTitleInput(e.target.value)}
+                    placeholder="e.g. eSewa QR, Khalti QR, Bank Deposit QR"
+                    id="payment-qr-title-input"
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm rounded-2xl outline-none focus:border-indigo-600 focus:bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Upload QR Image
+                  </label>
+                  <label className="flex flex-col items-center justify-center p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-100/80 transition-all text-center">
+                    <Upload size={24} className="text-indigo-600 mb-1" />
+                    <span className="text-xs font-bold text-slate-700">Click to Upload QR Image</span>
+                    <span className="text-[10px] text-slate-400 font-medium">PNG, JPG or WEBP from device</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePaymentQRFileUpload}
+                      id="payment-qr-file-input"
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {paymentImgInput && (
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <p className="text-xs font-extrabold text-slate-700">QR Image Preview:</p>
+                    <div className="bg-white p-2 rounded-xl border border-slate-200 flex items-center justify-center h-48 overflow-hidden">
+                      <img
+                        src={paymentImgInput}
+                        alt="Payment QR Preview"
+                        className="h-full w-auto object-contain rounded-lg"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl cursor-pointer transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePaymentQR}
+                  disabled={paymentLoading || !paymentImgInput.trim()}
+                  id="save-payment-qr-submit-btn"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50 transition-all"
+                >
+                  {paymentLoading ? 'Saving...' : 'Save Payment QR'}
                 </button>
               </div>
             </div>
@@ -2810,14 +3476,12 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                     <label className="text-[10px] font-bold text-slate-400 uppercase block">
                       Preview
                     </label>
-                    <div className="aspect-[21/9] rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+                    <div className="h-40 rounded-2xl overflow-hidden bg-slate-900 border border-slate-200 flex items-center justify-center">
                       <img
                         src={bannerImageUrlInput}
                         alt="Banner Preview"
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
                       />
                     </div>
                   </div>

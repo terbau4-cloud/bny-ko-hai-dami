@@ -33,7 +33,7 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [] }) 
                 src={b.imageUrl}
                 alt="App Banner"
                 referrerPolicy="no-referrer"
-                className="w-full h-44 sm:h-52 object-cover transform group-hover:scale-105 transition-transform duration-500"
+                className="w-full h-64 sm:h-80 md:h-96 lg:h-[28rem] object-cover transform group-hover:scale-105 transition-transform duration-500"
               />
               {b.redirectLink && (
                 <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md border border-white/20">
@@ -50,7 +50,7 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [] }) 
             src={gameBannerImg}
             alt="Game TopUp Banner"
             referrerPolicy="no-referrer"
-            className="w-full h-44 sm:h-52 object-cover transform group-hover:scale-105 transition-transform duration-500 opacity-90"
+            className="w-full h-64 sm:h-80 md:h-96 lg:h-[28rem] object-cover transform group-hover:scale-105 transition-transform duration-500 opacity-90"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-indigo-950/85 via-slate-900/50 to-transparent flex flex-col justify-center p-6 sm:p-8 text-white">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400 text-slate-900 rounded-full font-extrabold text-xs w-fit mb-2 shadow-xs">
