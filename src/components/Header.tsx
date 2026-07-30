@@ -23,7 +23,7 @@ export const Header: React.FC<Props> = ({ profile, onOpenWallet }) => {
           </div>
           <div>
             <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 leading-none">
-              BNY <span className="text-indigo-600">SHOP</span>
+              BNY <span className="text-[#2563eb]">SHOP</span>
             </h1>
             <p className="text-[10px] font-bold text-slate-400 tracking-wider uppercase mt-0.5">
               Topup Center Nepal
