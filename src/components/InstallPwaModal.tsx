@@ -128,7 +128,7 @@ export const InstallPwaModal: React.FC = () => {
               </p>
 
               <p className="text-xs text-slate-600 font-medium px-3 mb-5 leading-relaxed">
-                Install <span className="font-bold text-slate-900">BNY SHOP</span> on your home screen for faster access, instant notifications, and a smooth full-screen experience!
+                Install <span className="font-bold text-slate-900">BNY SHOP</span> on your home screen for faster access and a smooth full-screen experience!
               </p>
 
               {/* Action Buttons */}
