@@ -655,9 +655,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           plays: 100,
           description: 'Top up game credits instantly on BNY SHOP.',
           gameType: 'balloon',
-          products: [
-            { id: `prod_1`, name: '100 Credits', price: 150 }
-          ],
+          products: [],
           requirements: []
         };
         await setDoc(doc(db, 'games', newId), newGameData);
@@ -790,6 +788,33 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
   };
 
+  const handleDeleteAllProducts = async () => {
+    if (!selectedAdminGame) return;
+    const currentProds = selectedAdminGame.products || [];
+    if (currentProds.length === 0) {
+      alert('There are no products to delete.');
+      return;
+    }
+    if (
+      !confirm(
+        `Are you sure you want to delete ALL ${currentProds.length} products for "${selectedAdminGame.title}"? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
+        products: [],
+      });
+      setSelectedAdminGame((prev) => (prev ? { ...prev, products: [] } : null));
+      setCopyToast('Deleted all products successfully!');
+      setTimeout(() => setCopyToast(''), 2500);
+    } catch (err) {
+      console.error('Error deleting all products:', err);
+      alert('Failed to delete all products.');
+    }
+  };
+
   // Helper function to clean product name
   const cleanProductName = (str: string): string => {
     if (!str) return '';
@@ -799,12 +824,14 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     while (cleaned !== prev) {
       prev = cleaned;
       cleaned = cleaned
+        // Strip leading emojis, pointers, bullet symbols, and punctuation
+        .replace(/^[👉💸✨🔥💎📌🔹🔸▪️▫️▶️➡️➢•·~*#\-_=\+|:,\t@—–\s]+/g, '')
+        .replace(/^(?:[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2010-\u2017]|\uD83E[\uDD10-\uDDFF])+/g, '')
         // Strip trailing currency indicators (case-insensitive)
         .replace(/(?:\b(?:Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$)\b|Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$)\s*$/gi, '')
-        // Strip trailing separators and punctuation
-        .replace(/[\s\-_=|:,\t@—·•]+$/g, '')
-        // Strip leading separators and punctuation
-        .replace(/^[\s\-_=|:,\t@—·•]+/g, '')
+        // Strip trailing emojis, separators and punctuation
+        .replace(/[👉💸✨🔥💎📌🔹🔸▪️▫️▶️➡️➢•·~*#\-_=\+|:,\t@—–\s]+$/g, '')
+        .replace(/(?:[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2010-\u2017]|\uD83E[\uDD10-\uDDFF])+\s*$/g, '')
         .trim();
     }
 
@@ -814,10 +841,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   // Bulk parse product list helper
   const parsePastedProductList = (rawText: string): { name: string; price: number }[] => {
     if (!rawText || !rawText.trim()) return [];
-    const lines = rawText.split('\n');
+    const lines = rawText.split(/\r?\n/);
     const results: { name: string; price: number }[] = [];
 
-    for (let rawLine of lines) {
+    for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line) continue;
 
@@ -827,22 +854,36 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       let matchedName = '';
       let matchedPrice = 0;
 
-      // 1. Match line ending with optional currency marker and digits/decimal price
-      const match = line.match(/(.*?)(?:\s*(?:Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$|@|=|:|-|—)\s*|\s+)(\d+(?:\.\d+)?)\s*$/i);
+      // 1. Try matching line ending with last numeric value (integer or decimal)
+      const lastNumMatch = line.match(/^(.*?)\s*(\d+(?:\.\d+)?)\s*$/);
+      if (lastNumMatch) {
+        const textBefore = lastNumMatch[1];
+        const priceVal = parseFloat(lastNumMatch[2]);
+        const cleaned = cleanProductName(textBefore);
 
-      if (match && match[1] && match[2]) {
-        const pNum = parseFloat(match[2]);
-        const cleanedName = cleanProductName(match[1]);
-
-        if (cleanedName && !isNaN(pNum) && pNum > 0) {
-          matchedName = cleanedName;
-          matchedPrice = pNum;
+        if (cleaned && !isNaN(priceVal) && priceVal > 0) {
+          matchedName = cleaned;
+          matchedPrice = priceVal;
         }
       }
 
-      // 2. Fallback: split by common separators (-, =, :, |, tab, comma)
+      // 2. Fallback: match line ending with optional currency marker and digits/decimal price
       if (!matchedPrice) {
-        const parts = line.split(/[-=|:\t,]/);
+        const match = line.match(/(.*?)(?:\s*(?:Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$|@|=|:|-|—|–|💸)\s*|\s+)(\d+(?:\.\d+)?)\D*$/i);
+        if (match && match[1] && match[2]) {
+          const pNum = parseFloat(match[2]);
+          const cleanedName = cleanProductName(match[1]);
+
+          if (cleanedName && !isNaN(pNum) && pNum > 0) {
+            matchedName = cleanedName;
+            matchedPrice = pNum;
+          }
+        }
+      }
+
+      // 3. Fallback: split by common separators (-, =, :, |, tab, comma, —, –)
+      if (!matchedPrice) {
+        const parts = line.split(/[-=|:\t,—–]/);
         if (parts.length >= 2) {
           const lastPart = parts[parts.length - 1].trim();
           const firstParts = parts.slice(0, parts.length - 1).join(' - ').trim();
@@ -851,20 +892,6 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
           if (!isNaN(pNum) && pNum > 0 && firstParts.length > 0) {
             matchedName = cleanProductName(firstParts);
-            matchedPrice = pNum;
-          }
-        }
-      }
-
-      // 3. Fallback space token splitting from the right
-      if (!matchedPrice) {
-        const tokens = line.split(/\s+/);
-        if (tokens.length >= 2) {
-          const lastToken = tokens[tokens.length - 1].replace(/[^0-9.]/g, '');
-          const pNum = parseFloat(lastToken);
-          if (!isNaN(pNum) && pNum > 0) {
-            const rawName = tokens.slice(0, tokens.length - 1).join(' ');
-            matchedName = cleanProductName(rawName);
             matchedPrice = pNum;
           }
         }
@@ -2372,20 +2399,33 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => {
-                    setEditingProduct(null);
-                    setProdNameInput('');
-                    setProdPriceInput('');
-                    setBulkListInput('');
-                    setIsProductModalOpen(true);
-                  }}
-                  id="add-product-btn"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
-                >
-                  <Plus size={15} />
-                  <span>Add Product</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {selectedAdminGame.products && selectedAdminGame.products.length > 0 && (
+                    <button
+                      onClick={handleDeleteAllProducts}
+                      id="delete-all-products-btn"
+                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-xs px-3.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                    >
+                      <Trash2 size={15} />
+                      <span>Delete All Products</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setEditingProduct(null);
+                      setProdNameInput('');
+                      setProdPriceInput('');
+                      setBulkListInput('');
+                      setIsProductModalOpen(true);
+                    }}
+                    id="add-product-btn"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                  >
+                    <Plus size={15} />
+                    <span>Add Product</span>
+                  </button>
+                </div>
               </div>
 
               {/* Available Products List */}
