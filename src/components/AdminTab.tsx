@@ -790,6 +790,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
   };
 
+  // Helper function to clean product name
+  const cleanProductName = (str: string): string => {
+    if (!str) return '';
+    let cleaned = str.trim();
+
+    let prev = '';
+    while (cleaned !== prev) {
+      prev = cleaned;
+      cleaned = cleaned
+        // Strip trailing currency indicators (case-insensitive)
+        .replace(/(?:\b(?:Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$)\b|Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$)\s*$/gi, '')
+        // Strip trailing separators and punctuation
+        .replace(/[\s\-_=|:,\t@—·•]+$/g, '')
+        // Strip leading separators and punctuation
+        .replace(/^[\s\-_=|:,\t@—·•]+/g, '')
+        .trim();
+    }
+
+    return cleaned;
+  };
+
   // Bulk parse product list helper
   const parsePastedProductList = (rawText: string): { name: string; price: number }[] => {
     if (!rawText || !rawText.trim()) return [];
@@ -800,55 +821,57 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       const line = rawLine.trim();
       if (!line) continue;
 
+      // Skip header / title lines with no price numbers
+      if (!/\d/.test(line)) continue;
+
       let matchedName = '';
       let matchedPrice = 0;
 
-      // 1. Try splitting by common separators: -, =, :, |, tab, comma
-      const parts = line.split(/[-=|:\t,]/);
-      if (parts.length >= 2) {
-        const lastPart = parts[parts.length - 1].trim();
-        const firstParts = parts.slice(0, parts.length - 1).join(' - ').trim();
+      // 1. Match line ending with optional currency marker and digits/decimal price
+      const match = line.match(/(.*?)(?:\s*(?:Rs\.?|RS\.?|NRs\.?|NPR\.?|INR\.?|Tk\.?|₹|\$|@|=|:|-|—)\s*|\s+)(\d+(?:\.\d+)?)\s*$/i);
 
-        const cleanPriceStr = lastPart.replace(/[^0-9.]/g, '');
-        const pNum = parseFloat(cleanPriceStr);
+      if (match && match[1] && match[2]) {
+        const pNum = parseFloat(match[2]);
+        const cleanedName = cleanProductName(match[1]);
 
-        if (!isNaN(pNum) && pNum > 0 && firstParts.length > 0) {
-          matchedName = firstParts.replace(/^(?:Rs\.?|NPR|NRs|₹)\s*/i, '').trim();
+        if (cleanedName && !isNaN(pNum) && pNum > 0) {
+          matchedName = cleanedName;
           matchedPrice = pNum;
         }
       }
 
-      // 2. Trailing price pattern search
+      // 2. Fallback: split by common separators (-, =, :, |, tab, comma)
       if (!matchedPrice) {
-        const match = line.match(/(.*?)(?:[-=|:\t,]|(?:\b(?:Rs\.?|NPR|NRs|₹)\b))?\s*(\d+(?:\.\d+)?)\s*$/i);
-        if (match) {
-          const namePart = match[1].trim().replace(/[-=|:\t,]+$/, '').trim();
-          const pricePart = parseFloat(match[2]);
-          if (namePart && !isNaN(pricePart) && pricePart > 0) {
-            matchedName = namePart;
-            matchedPrice = pricePart;
+        const parts = line.split(/[-=|:\t,]/);
+        if (parts.length >= 2) {
+          const lastPart = parts[parts.length - 1].trim();
+          const firstParts = parts.slice(0, parts.length - 1).join(' - ').trim();
+          const cleanPriceStr = lastPart.replace(/[^0-9.]/g, '');
+          const pNum = parseFloat(cleanPriceStr);
+
+          if (!isNaN(pNum) && pNum > 0 && firstParts.length > 0) {
+            matchedName = cleanProductName(firstParts);
+            matchedPrice = pNum;
           }
         }
       }
 
-      // 3. Fallback space token
+      // 3. Fallback space token splitting from the right
       if (!matchedPrice) {
         const tokens = line.split(/\s+/);
         if (tokens.length >= 2) {
           const lastToken = tokens[tokens.length - 1].replace(/[^0-9.]/g, '');
           const pNum = parseFloat(lastToken);
           if (!isNaN(pNum) && pNum > 0) {
-            matchedName = tokens.slice(0, tokens.length - 1).join(' ');
+            const rawName = tokens.slice(0, tokens.length - 1).join(' ');
+            matchedName = cleanProductName(rawName);
             matchedPrice = pNum;
           }
         }
       }
 
       if (matchedName && matchedPrice > 0) {
-        matchedName = matchedName.replace(/^[-=|:\s,]+|[-=|:\s,]+$/g, '').trim();
-        if (matchedName) {
-          results.push({ name: matchedName, price: matchedPrice });
-        }
+        results.push({ name: matchedName, price: matchedPrice });
       }
     }
 

@@ -30,16 +30,14 @@ export const TopupDetailModal: React.FC<Props> = ({
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [placedOrderId, setPlacedOrderId] = useState<string>('');
 
+  const availableProducts: TopupProduct[] = (game && game.products && game.products.length > 0) ? game.products : [];
+
   // Set default selected product when game changes
   useEffect(() => {
-    if (game && game.products && game.products.length > 0) {
-      setSelectedProduct(game.products[0]);
-    } else if (game) {
-      setSelectedProduct({
-        id: 'default_1',
-        name: '100 Diamonds',
-        price: 150,
-      });
+    if (availableProducts.length > 0) {
+      setSelectedProduct(availableProducts[0]);
+    } else {
+      setSelectedProduct(null);
     }
     setQuantity(1);
     setPlayerId('');
@@ -49,20 +47,17 @@ export const TopupDetailModal: React.FC<Props> = ({
 
   if (!game) return null;
 
-  const defaultProducts: TopupProduct[] = game.products || [
-    { id: 'def_1', name: '100 Diamonds', price: 150, badge: 'Popular' },
-    { id: 'def_2', name: '250 Diamonds', price: 350 },
-    { id: 'def_3', name: '500 Diamonds', price: 680, badge: 'HOT' },
-    { id: 'def_4', name: '1000 Diamonds', price: 1300 },
-  ];
-
-  const currentProduct = selectedProduct || defaultProducts[0];
-  const totalAmount = currentProduct ? currentProduct.price * quantity : 0;
+  const totalAmount = selectedProduct ? selectedProduct.price * quantity : 0;
 
   const handleIncrement = () => setQuantity((q) => q + 1);
   const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
 
   const handleConfirmPurchase = () => {
+    if (!selectedProduct) {
+      setErrorMsg('Please select a recharge package product first.');
+      return;
+    }
+
     if (!playerId.trim()) {
       setErrorMsg('Please enter your Player ID / User ID first.');
       return;
@@ -82,7 +77,7 @@ export const TopupDetailModal: React.FC<Props> = ({
 
     onPurchase({
       game,
-      product: currentProduct,
+      product: selectedProduct,
       quantity,
       playerId: playerId.trim(),
       totalAmount,
@@ -189,47 +184,53 @@ export const TopupDetailModal: React.FC<Props> = ({
                     2. Select Product / Package
                   </label>
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {defaultProducts.map((prod) => {
-                      const isSelected = currentProduct?.id === prod.id;
-                      return (
-                        <div
-                          key={prod.id}
-                          onClick={() => {
-                            setSelectedProduct(prod);
-                            if (errorMsg) setErrorMsg('');
-                          }}
-                          id={`product-card-${prod.id}`}
-                          className={`relative p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'border-indigo-600 bg-indigo-50/70 shadow-sm'
-                              : 'border-slate-200 hover:border-slate-300 bg-white'
-                          }`}
-                        >
-                          {prod.badge && (
-                            <span className="absolute top-2 right-2 bg-amber-400 text-slate-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
-                              {prod.badge}
-                            </span>
-                          )}
-
-                          <div className="font-bold text-slate-900 text-sm pr-10">
-                            {prod.name}
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between">
-                            <span className="text-indigo-600 font-extrabold text-sm">
-                              RS {prod.price}
-                            </span>
-                            {isSelected && (
-                              <div className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center">
-                                <Check size={12} strokeWidth={3} />
-                              </div>
+                  {availableProducts.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {availableProducts.map((prod) => {
+                        const isSelected = selectedProduct?.id === prod.id;
+                        return (
+                          <div
+                            key={prod.id}
+                            onClick={() => {
+                              setSelectedProduct(prod);
+                              if (errorMsg) setErrorMsg('');
+                            }}
+                            id={`product-card-${prod.id}`}
+                            className={`relative p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'border-indigo-600 bg-indigo-50/70 shadow-sm'
+                                : 'border-slate-200 hover:border-slate-300 bg-white'
+                            }`}
+                          >
+                            {prod.badge && (
+                              <span className="absolute top-2 right-2 bg-amber-400 text-slate-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
+                                {prod.badge}
+                              </span>
                             )}
+
+                            <div className="font-bold text-slate-900 text-sm pr-10">
+                              {prod.name}
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-between">
+                              <span className="text-indigo-600 font-extrabold text-sm">
+                                RS {prod.price}
+                              </span>
+                              {isSelected && (
+                                <div className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center">
+                                  <Check size={12} strokeWidth={3} />
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-2xl text-center">
+                      No packages available for this game at the moment.
+                    </div>
+                  )}
                 </div>
 
                 {/* Step 3: Quantity Selector */}
@@ -249,18 +250,19 @@ export const TopupDetailModal: React.FC<Props> = ({
                       onClick={handleDecrement}
                       id="qty-decrement-btn"
                       className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold transition-colors cursor-pointer disabled:opacity-50"
-                      disabled={quantity <= 1}
+                      disabled={quantity <= 1 || !selectedProduct}
                     >
                       <Minus size={16} />
                     </button>
                     <span className="w-6 text-center font-black text-lg text-slate-900">
-                      {quantity}
+                      {selectedProduct ? quantity : 0}
                     </span>
                     <button
                       type="button"
                       onClick={handleIncrement}
                       id="qty-increment-btn"
-                      className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
+                      className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-bold transition-colors cursor-pointer disabled:opacity-50"
+                      disabled={!selectedProduct}
                     >
                       <Plus size={16} />
                     </button>
@@ -285,18 +287,23 @@ export const TopupDetailModal: React.FC<Props> = ({
                   Total Price
                 </span>
                 <span className="text-2xl font-black text-indigo-600">
-                  RS {totalAmount}
+                  {selectedProduct ? `RS ${totalAmount}` : 'RS 0'}
                 </span>
               </div>
 
               <button
                 type="button"
                 onClick={handleConfirmPurchase}
+                disabled={!selectedProduct || availableProducts.length === 0}
                 id="confirm-purchase-btn"
-                className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm sm:text-base rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                className={`flex-1 py-3.5 text-white font-bold text-sm sm:text-base rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                  selectedProduct && availableProducts.length > 0
+                    ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer'
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                }`}
               >
                 <ShieldCheck size={18} />
-                <span>Purchase Now</span>
+                <span>{selectedProduct ? 'Purchase Now' : 'No Package Available'}</span>
               </button>
             </div>
           )}

@@ -32,15 +32,13 @@ export const TopupDetailPage: React.FC<Props> = ({
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [placedOrderId, setPlacedOrderId] = useState<string>('');
 
+  const availableProducts: TopupProduct[] = (game && game.products && game.products.length > 0) ? game.products : [];
+
   useEffect(() => {
-    if (game && game.products && game.products.length > 0) {
-      setSelectedProduct(game.products[0]);
-    } else if (game) {
-      setSelectedProduct({
-        id: 'default_1',
-        name: '100 Diamonds',
-        price: 150,
-      });
+    if (availableProducts.length > 0) {
+      setSelectedProduct(availableProducts[0]);
+    } else {
+      setSelectedProduct(null);
     }
     setQuantity(1);
     setReqValues({});
@@ -49,15 +47,7 @@ export const TopupDetailPage: React.FC<Props> = ({
     setIsSuccess(false);
   }, [game]);
 
-  const defaultProducts: TopupProduct[] = game.products || [
-    { id: 'def_1', name: '100 Diamonds', price: 150, badge: 'Popular' },
-    { id: 'def_2', name: '250 Diamonds', price: 350 },
-    { id: 'def_3', name: '500 Diamonds', price: 680, badge: 'HOT' },
-    { id: 'def_4', name: '1000 Diamonds', price: 1300 },
-  ];
-
-  const currentProduct = selectedProduct || defaultProducts[0];
-  const totalAmount = currentProduct ? currentProduct.price * quantity : 0;
+  const totalAmount = selectedProduct ? selectedProduct.price * quantity : 0;
 
   const handleIncrement = () => setQuantity((q) => q + 1);
   const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
@@ -67,6 +57,11 @@ export const TopupDetailPage: React.FC<Props> = ({
     : [{ id: 'req_default', name: 'Player ID', type: 'number' }];
 
   const handleConfirmPurchase = () => {
+    if (!selectedProduct) {
+      setErrorMsg('Please select a recharge package product first.');
+      return;
+    }
+
     const missingReq = activeRequirements.find((r) => !reqValues[r.id]?.trim());
     if (missingReq) {
       setErrorMsg(`Please enter required ${missingReq.name} first.`);
@@ -93,7 +88,7 @@ export const TopupDetailPage: React.FC<Props> = ({
 
     onPurchase({
       game,
-      product: currentProduct,
+      product: selectedProduct,
       quantity,
       playerId: mainPlayerId,
       requirementsData,
@@ -205,47 +200,54 @@ export const TopupDetailPage: React.FC<Props> = ({
                 <span>Select Recharge Package</span>
               </label>
 
-              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
-                {defaultProducts.map((prod) => {
-                  const isSelected = currentProduct?.id === prod.id;
-                  return (
-                    <div
-                      key={prod.id}
-                      onClick={() => {
-                        setSelectedProduct(prod);
-                        if (errorMsg) setErrorMsg('');
-                      }}
-                      id={`page-product-card-${prod.id}`}
-                      className={`relative p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50/80 shadow-md scale-[1.02]'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      {prod.badge && (
-                        <span className="absolute top-2 right-2 bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
-                          {prod.badge}
-                        </span>
-                      )}
-
-                      <div className="font-black text-slate-900 text-sm sm:text-base pr-8">
-                        {prod.name}
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-indigo-600 font-black text-sm sm:text-base">
-                          RS {prod.price}
-                        </span>
-                        {isSelected && (
-                          <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-xs">
-                            <Check size={14} strokeWidth={3} />
-                          </div>
+              {availableProducts.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
+                  {availableProducts.map((prod) => {
+                    const isSelected = selectedProduct?.id === prod.id;
+                    return (
+                      <div
+                        key={prod.id}
+                        onClick={() => {
+                          setSelectedProduct(prod);
+                          if (errorMsg) setErrorMsg('');
+                        }}
+                        id={`page-product-card-${prod.id}`}
+                        className={`relative p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/80 shadow-md scale-[1.02]'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        {prod.badge && (
+                          <span className="absolute top-2 right-2 bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
+                            {prod.badge}
+                          </span>
                         )}
+
+                        <div className="font-black text-slate-900 text-sm sm:text-base pr-8">
+                          {prod.name}
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className="text-indigo-600 font-black text-sm sm:text-base">
+                            RS {prod.price}
+                          </span>
+                          {isSelected && (
+                            <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-xs">
+                              <Check size={14} strokeWidth={3} />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-2xl text-center space-y-1">
+                  <p className="font-black text-sm text-amber-900">No Recharge Packages Available</p>
+                  <p className="text-amber-700 font-medium">There are no packages available for this game at the moment.</p>
+                </div>
+              )}
             </div>
 
             {/* Step 3: Quantity */}
@@ -263,18 +265,19 @@ export const TopupDetailPage: React.FC<Props> = ({
                   onClick={handleDecrement}
                   id="page-qty-decrement-btn"
                   className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold transition-colors cursor-pointer disabled:opacity-50"
-                  disabled={quantity <= 1}
+                  disabled={quantity <= 1 || !selectedProduct}
                 >
                   <Minus size={16} />
                 </button>
                 <span className="w-6 text-center font-black text-lg text-slate-900">
-                  {quantity}
+                  {selectedProduct ? quantity : 0}
                 </span>
                 <button
                   type="button"
                   onClick={handleIncrement}
                   id="page-qty-increment-btn"
-                  className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
+                  className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-bold transition-colors cursor-pointer disabled:opacity-50"
+                  disabled={!selectedProduct}
                 >
                   <Plus size={16} />
                 </button>
@@ -294,17 +297,24 @@ export const TopupDetailPage: React.FC<Props> = ({
                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
                   Total Payable
                 </span>
-                <span className="text-2xl font-black text-indigo-600">RS {totalAmount}</span>
+                <span className="text-2xl font-black text-indigo-600">
+                  {selectedProduct ? `RS ${totalAmount}` : 'RS 0'}
+                </span>
               </div>
 
               <button
                 type="button"
                 onClick={handleConfirmPurchase}
+                disabled={!selectedProduct || availableProducts.length === 0}
                 id="page-confirm-purchase-btn"
-                className="flex-1 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-base rounded-2xl shadow-lg shadow-indigo-200 transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-2"
+                className={`flex-1 py-4 text-white font-black text-base rounded-2xl shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2 ${
+                  selectedProduct && availableProducts.length > 0
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-indigo-200 cursor-pointer'
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                }`}
               >
                 <ShieldCheck size={20} />
-                <span>Confirm Purchase</span>
+                <span>{selectedProduct ? 'Confirm Purchase' : 'No Package Available'}</span>
               </button>
             </div>
           </div>
