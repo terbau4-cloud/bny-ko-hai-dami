@@ -8,8 +8,6 @@ interface Props {
   banners?: AppBanner[];
 }
 
-const DEFAULT_BANNER_URL = 'https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg';
-
 export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [] }) => {
   const activeBanners = banners.length > 0 ? banners : [];
 
@@ -46,13 +44,11 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [] }) 
           ))}
         </div>
       ) : (
-        <div className="relative rounded-3xl overflow-hidden shadow-lg border border-slate-200 group bg-slate-900">
-          <img
-            src={DEFAULT_BANNER_URL}
-            alt="BNY SHOP Banner"
-            referrerPolicy="no-referrer"
-            className="w-full h-64 sm:h-80 md:h-96 lg:h-[28rem] object-cover transform group-hover:scale-105 transition-transform duration-500"
-          />
+        <div className="relative rounded-3xl overflow-hidden shadow-lg border border-slate-800 bg-slate-900 h-48 sm:h-64 md:h-80 lg:h-96 animate-pulse flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2 text-slate-500">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs font-semibold text-slate-400">Loading BNY SHOP Banner...</span>
+          </div>
         </div>
       )}
 
