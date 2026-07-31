@@ -28,7 +28,7 @@ import { auth, db } from './lib/firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [games, setGames] = useState<Game[]>(INITIAL_GAMES);
+  const [games, setGames] = useState<Game[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -191,6 +191,8 @@ export default function App() {
             const updated = loadedGames.find((g) => g.id === prev.id);
             return updated || null;
           });
+        } else {
+          setGames(INITIAL_GAMES);
         }
       },
       (err) => {
