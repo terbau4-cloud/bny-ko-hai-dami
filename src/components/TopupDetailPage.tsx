@@ -16,6 +16,7 @@ interface Props {
     orderId: string;
   }) => void;
   walletBalance: number;
+  isBlocked?: boolean;
 }
 
 export const TopupDetailPage: React.FC<Props> = ({
@@ -23,6 +24,7 @@ export const TopupDetailPage: React.FC<Props> = ({
   onBack,
   onPurchase,
   walletBalance,
+  isBlocked = false,
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<TopupProduct | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
@@ -57,6 +59,11 @@ export const TopupDetailPage: React.FC<Props> = ({
     : [{ id: 'req_default', name: 'Player ID', type: 'number' }];
 
   const handleConfirmPurchase = () => {
+    if (isBlocked) {
+      setErrorMsg('You have been blocked by Admin. You cannot place orders.');
+      return;
+    }
+
     if (!selectedProduct) {
       setErrorMsg('Please select a recharge package product first.');
       return;

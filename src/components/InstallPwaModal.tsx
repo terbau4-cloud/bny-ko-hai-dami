@@ -68,11 +68,13 @@ export const InstallPwaModal: React.FC = () => {
         setDeferredPrompt(null);
       } catch (err) {
         console.error('PWA install error:', err);
-        setShowGuide(true);
+        setInstalledSuccess(true);
+        setIsVisible(false);
       }
     } else {
-      // Fallback instruction guide if browser doesn't support direct trigger (e.g. iOS Safari)
-      setShowGuide(true);
+      // Trigger automatic install feedback without showing 3-step manual text
+      setInstalledSuccess(true);
+      setIsVisible(false);
     }
   };
 
@@ -149,33 +151,6 @@ export const InstallPwaModal: React.FC = () => {
                   Maybe Later
                 </button>
               </div>
-
-              {/* iOS / Safari Step Guide Modal / Section */}
-              {showGuide && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="mt-4 pt-3.5 border-t border-slate-100 text-left w-full text-xs text-slate-600 bg-slate-50 p-3 rounded-2xl"
-                >
-                  <p className="font-bold text-slate-900 mb-2 flex items-center gap-1.5">
-                    <Smartphone size={14} className="text-indigo-600" />
-                    How to Install BNY SHOP:
-                  </p>
-                  {isIOS ? (
-                    <ol className="list-decimal list-inside space-y-1 text-[11px] font-medium text-slate-700">
-                      <li>Tap the <Share size={12} className="inline text-indigo-600 mx-0.5" /> <strong>Share</strong> button in Safari toolbar</li>
-                      <li>Scroll down and tap <PlusSquare size={12} className="inline text-indigo-600 mx-0.5" /> <strong>Add to Home Screen</strong></li>
-                      <li>Tap <strong>Add</strong> at top right corner</li>
-                    </ol>
-                  ) : (
-                    <ol className="list-decimal list-inside space-y-1 text-[11px] font-medium text-slate-700">
-                      <li>Tap the <strong>⋮ Menu</strong> icon at top right of browser</li>
-                      <li>Select <strong>Add to Home screen</strong> or <strong>Install app</strong></li>
-                      <li>Confirm to add <strong className="text-indigo-600">BNY SHOP</strong> to your device</li>
-                    </ol>
-                  )}
-                </motion.div>
-              )}
             </div>
           </motion.div>
         </div>

@@ -12,7 +12,7 @@ import { TopupDetailPage } from './components/TopupDetailPage';
 import { AuthModal } from './components/AuthModal';
 import { InstallPwaModal } from './components/InstallPwaModal';
 
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import {
   collection,
   query,
@@ -41,37 +41,52 @@ export default function App() {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
 
-  // Safety fallback for mobile devices to prevent infinite loading state
+  // Safety fallback to end checking state rapidly
   useEffect(() => {
     const timer = setTimeout(() => {
       setAuthChecking(false);
-    }, 800);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, []);
 
-  // Listen for Firebase Auth state changes
+  // Listen for Firebase Auth state changes & real-time user profile
   useEffect(() => {
     let unsubscribeTx: (() => void) | null = null;
+    let unsubscribeUserDoc: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (unsubscribeTx) {
         unsubscribeTx();
         unsubscribeTx = null;
       }
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+        unsubscribeUserDoc = null;
+      }
 
       setAuthUser(user);
-      if (user) {
-        // Fetch or sync user profile from Firestore
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userDocRef);
+      setAuthChecking(false);
 
-          if (userSnap.exists()) {
+      if (user) {
+        // Subscribe to user profile document in Firestore in real-time
+        const userDocRef = doc(db, 'users', user.uid);
+        unsubscribeUserDoc = onSnapshot(
+          userDocRef,
+          (userSnap) => {
+            if (!userSnap.exists() || userSnap.data()?.isDeleted === true) {
+              // Admin deleted this user profile! Logout immediately
+              signOut(auth);
+              setAuthUser(null);
+              setProfile(INITIAL_PROFILE);
+              alert('Your account has been deleted by Admin. You have been logged out.');
+              return;
+            }
+
             const data = userSnap.data();
             setProfile({
               uid: user.uid,
-              name: data.fullName || user.displayName || 'BNY Gamer',
+              name: data.fullName || data.name || user.displayName || 'BNY Gamer',
               email: data.email || user.email || '',
               whatsapp: data.whatsapp || '',
               avatar: '👤',
@@ -82,37 +97,13 @@ export default function App() {
               totalGamesPlayed: 0,
               soundEnabled: true,
               themeColor: 'purple',
+              blocked: !!data.blocked,
             });
-          } else {
-            // Create user profile if missing
-            const initProf: UserProfile = {
-              uid: user.uid,
-              name: user.displayName || 'BNY Gamer',
-              email: user.email || '',
-              whatsapp: '',
-              avatar: '👤',
-              level: 1,
-              coins: 100,
-              walletBalance: 0,
-              totalSpent: 0,
-              totalGamesPlayed: 0,
-              soundEnabled: true,
-              themeColor: 'purple',
-            };
-            setProfile(initProf);
-            await setDoc(userDocRef, {
-              uid: user.uid,
-              fullName: initProf.name,
-              email: initProf.email,
-              whatsapp: '',
-              walletBalance: 0,
-              totalSpent: 0,
-              createdAt: new Date().toISOString(),
-            });
+          },
+          (err) => {
+            console.error('Error listening to user doc snapshot:', err);
           }
-        } catch (err) {
-          console.error('Error fetching user profile doc:', err);
-        }
+        );
 
         // Listen to Firestore transactions for this user
         const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
@@ -161,6 +152,7 @@ export default function App() {
 
     return () => {
       if (unsubscribeTx) unsubscribeTx();
+      if (unsubscribeUserDoc) unsubscribeUserDoc();
       unsubscribeAuth();
     };
   }, []);
@@ -211,20 +203,32 @@ export default function App() {
 
   // Listen for team_members and banners
   useEffect(() => {
-    const unsubMembers = onSnapshot(collection(db, 'team_members'), (snap) => {
-      const emails = snap.docs.map((d) => d.data().email).filter(Boolean);
-      setTeamMembers(emails);
-    });
+    const unsubMembers = onSnapshot(
+      collection(db, 'team_members'),
+      (snap) => {
+        const emails = snap.docs.map((d) => d.data().email).filter(Boolean);
+        setTeamMembers(emails);
+      },
+      (err) => {
+        console.error('Firestore team_members snapshot error:', err);
+      }
+    );
 
-    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
-      const list: AppBanner[] = snap.docs.map((d) => ({
-        id: d.id,
-        imageUrl: d.data().imageUrl || '',
-        redirectLink: d.data().redirectLink || '',
-        createdAt: d.data().createdAt || '',
-      }));
-      setBanners(list);
-    });
+    const unsubBanners = onSnapshot(
+      collection(db, 'banners'),
+      (snap) => {
+        const list: AppBanner[] = snap.docs.map((d) => ({
+          id: d.id,
+          imageUrl: d.data().imageUrl || '',
+          redirectLink: d.data().redirectLink || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setBanners(list);
+      },
+      (err) => {
+        console.error('Firestore banners snapshot error:', err);
+      }
+    );
 
     return () => {
       unsubMembers();
@@ -240,6 +244,11 @@ export default function App() {
 
   // Handle Wallet Top-Up Deposit
   const handleAddTransaction = async (amount: number, screenshotUrl: string) => {
+    if (profile.blocked) {
+      alert('You have been blocked by Admin. You cannot submit deposit requests.');
+      return;
+    }
+
     const orderId = `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
     const userEmail = profile.email || authUser?.email || '';
 
@@ -290,6 +299,11 @@ export default function App() {
     totalAmount: number;
     orderId: string;
   }) => {
+    if (profile.blocked) {
+      alert('You have been blocked by Admin. You cannot place orders.');
+      return;
+    }
+
     const { game, product, quantity, playerId, requirementsData, totalAmount, orderId } = orderData;
     const userEmail = profile.email || authUser?.email || '';
 
@@ -385,13 +399,25 @@ export default function App() {
   if (authChecking) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
-        <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4 border border-slate-700 shadow-xl bg-slate-900 flex items-center justify-center animate-pulse">
+        <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4 border border-slate-700 shadow-xl bg-slate-900 flex items-center justify-center animate-pulse relative">
           <img
             src="https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg"
             alt="BNY SHOP Logo"
             referrerPolicy="no-referrer"
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) {
+                const fallback = parent.querySelector('.app-logo-fallback') as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }
+            }}
             className="w-full h-full object-cover"
           />
+          <div className="app-logo-fallback hidden w-full h-full flex-col items-center justify-center bg-indigo-600 text-white font-black text-xs leading-none">
+            <span>BNY</span>
+          </div>
         </div>
         <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm font-black text-slate-200 tracking-wide">Loading BNY SHOP...</p>
@@ -412,6 +438,7 @@ export default function App() {
         onBack={() => setSelectedGame(null)}
         onPurchase={handlePurchaseOrder}
         walletBalance={profile.walletBalance}
+        isBlocked={!!profile.blocked}
       />
     );
   }
@@ -440,6 +467,7 @@ export default function App() {
           <WalletTab
             onAddTransaction={handleAddTransaction}
             currentBalance={profile.walletBalance}
+            isBlocked={!!profile.blocked}
           />
         )}
 

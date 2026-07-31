@@ -13,13 +13,25 @@ export const Header: React.FC<Props> = ({ profile, onOpenWallet }) => {
       <div className="max-w-3xl mx-auto flex items-center justify-between">
         {/* BNY SHOP Logo & Name */}
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-slate-900 shrink-0">
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 shrink-0 flex items-center justify-center relative group">
             <img
               src="https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg"
               alt="BNY SHOP Logo"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  const fallback = parent.querySelector('.logo-fallback') as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }
+              }}
               className="w-full h-full object-cover"
             />
+            <div className="logo-fallback hidden w-full h-full flex-col items-center justify-center bg-indigo-600 text-white font-black text-xs leading-none">
+              <span>BNY</span>
+            </div>
           </div>
           <div>
             <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 leading-none">

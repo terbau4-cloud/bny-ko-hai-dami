@@ -147,34 +147,52 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   // Firestore listeners for banners, team_members & payment_qrs
   useEffect(() => {
-    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
-      const list: AppBanner[] = snap.docs.map((d) => ({
-        id: d.id,
-        imageUrl: d.data().imageUrl || '',
-        redirectLink: d.data().redirectLink || '',
-        createdAt: d.data().createdAt || '',
-      }));
-      setBannersList(list);
-    });
+    const unsubBanners = onSnapshot(
+      collection(db, 'banners'),
+      (snap) => {
+        const list: AppBanner[] = snap.docs.map((d) => ({
+          id: d.id,
+          imageUrl: d.data().imageUrl || '',
+          redirectLink: d.data().redirectLink || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setBannersList(list);
+      },
+      (err) => {
+        console.error('Admin banners snapshot error:', err);
+      }
+    );
 
-    const unsubMembers = onSnapshot(collection(db, 'team_members'), (snap) => {
-      const list: TeamMember[] = snap.docs.map((d) => ({
-        id: d.id,
-        email: d.data().email || '',
-        createdAt: d.data().createdAt || '',
-      }));
-      setTeamMembersList(list);
-    });
+    const unsubMembers = onSnapshot(
+      collection(db, 'team_members'),
+      (snap) => {
+        const list: TeamMember[] = snap.docs.map((d) => ({
+          id: d.id,
+          email: d.data().email || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setTeamMembersList(list);
+      },
+      (err) => {
+        console.error('Admin team_members snapshot error:', err);
+      }
+    );
 
-    const unsubQRs = onSnapshot(collection(db, 'payment_qrs'), (snap) => {
-      const list: PaymentQR[] = snap.docs.map((d) => ({
-        id: d.id,
-        title: d.data().title || 'Payment QR',
-        imageUrl: d.data().imageUrl || '',
-        createdAt: d.data().createdAt || '',
-      }));
-      setPaymentQRsList(list);
-    });
+    const unsubQRs = onSnapshot(
+      collection(db, 'payment_qrs'),
+      (snap) => {
+        const list: PaymentQR[] = snap.docs.map((d) => ({
+          id: d.id,
+          title: d.data().title || 'Payment QR',
+          imageUrl: d.data().imageUrl || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setPaymentQRsList(list);
+      },
+      (err) => {
+        console.error('Admin payment_qrs snapshot error:', err);
+      }
+    );
 
     return () => {
       unsubBanners();

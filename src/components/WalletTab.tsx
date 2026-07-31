@@ -7,6 +7,7 @@ import { db } from '../lib/firebase';
 interface Props {
   onAddTransaction: (amount: number, screenshotUrl: string) => void;
   currentBalance: number;
+  isBlocked?: boolean;
 }
 
 interface PaymentQR {
@@ -15,7 +16,7 @@ interface PaymentQR {
   imageUrl: string;
 }
 
-export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance }) => {
+export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, isBlocked = false }) => {
   const [amount, setAmount] = useState<string>('');
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
@@ -27,14 +28,20 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'payment_qrs'), (snap) => {
-      const qrs: PaymentQR[] = snap.docs.map((d) => ({
-        id: d.id,
-        title: d.data().title || 'Payment QR',
-        imageUrl: d.data().imageUrl || '',
-      }));
-      setPaymentQrs(qrs);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'payment_qrs'),
+      (snap) => {
+        const qrs: PaymentQR[] = snap.docs.map((d) => ({
+          id: d.id,
+          title: d.data().title || 'Payment QR',
+          imageUrl: d.data().imageUrl || '',
+        }));
+        setPaymentQrs(qrs);
+      },
+      (err) => {
+        console.error('Firestore payment_qrs error in WalletTab:', err);
+      }
+    );
     return () => unsub();
   }, []);
 
@@ -65,6 +72,10 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlocked) {
+      alert('You have been blocked by Admin. You cannot submit deposit requests.');
+      return;
+    }
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
       alert('Please enter a valid amount!');

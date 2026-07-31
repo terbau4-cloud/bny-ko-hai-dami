@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
+  signOut,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -97,7 +98,7 @@ export const AuthModal: React.FC<Props> = ({ onSuccess }) => {
         const userDocRef = doc(db, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
 
-        if (userDocSnap.exists()) {
+        if (userDocSnap.exists() && !userDocSnap.data()?.isDeleted) {
           const data = userDocSnap.data();
           const loadedProfile: UserProfile = {
             uid: user.uid,
@@ -112,42 +113,20 @@ export const AuthModal: React.FC<Props> = ({ onSuccess }) => {
             totalGamesPlayed: 0,
             soundEnabled: true,
             themeColor: 'purple',
+            blocked: !!data.blocked,
           };
           onSuccess(loadedProfile);
         } else {
-          const fallbackProfile: UserProfile = {
-            uid: user.uid,
-            name: user.displayName || 'BNY Gamer',
-            email: user.email || email.trim(),
-            whatsapp: '',
-            avatar: '👤',
-            level: 1,
-            coins: 100,
-            walletBalance: 0,
-            totalSpent: 0,
-            totalGamesPlayed: 0,
-            soundEnabled: true,
-            themeColor: 'purple',
-          };
-
-          await setDoc(userDocRef, {
-            uid: user.uid,
-            fullName: fallbackProfile.name,
-            email: fallbackProfile.email,
-            whatsapp: '',
-            walletBalance: 0,
-            totalSpent: 0,
-            createdAt: new Date().toISOString(),
-          });
-
-          onSuccess(fallbackProfile);
+          await signOut(auth);
+          setError('This account has been deleted by Admin and cannot be accessed.');
+          return;
         }
       }
     } catch (err: any) {
       console.error('Firebase Auth Error:', err);
       let msg = 'Authentication failed. Please try again.';
       if (err.code === 'auth/email-already-in-use') {
-        msg = 'This email address is already registered. Please sign in.';
+        msg = 'This email is already registered with BNY SHOP. Please sign in instead.';
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
         msg = 'Invalid email or password. Please check your credentials.';
       } else if (err.code === 'auth/invalid-email') {
@@ -180,14 +159,27 @@ export const AuthModal: React.FC<Props> = ({ onSuccess }) => {
           
           {/* Logo Container */}
           <div className="relative inline-block mb-3">
-            <div className="w-20 h-20 rounded-2xl p-1 bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-xl mx-auto">
-              <div className="w-full h-full bg-slate-900 rounded-[14px] overflow-hidden flex items-center justify-center">
+            <div className="w-20 h-20 rounded-2xl p-1 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-xl mx-auto">
+              <div className="w-full h-full bg-slate-900 rounded-[14px] overflow-hidden flex items-center justify-center relative">
                 <img
                   src="https://i.ibb.co/Qv0ZyF0w/IMG-20260713-WA0032.jpg"
                   alt="BNY SHOP Logo"
                   referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      const fallback = parent.querySelector('.auth-logo-fallback') as HTMLElement;
+                      if (fallback) fallback.style.display = 'flex';
+                    }
+                  }}
                   className="w-full h-full object-cover"
                 />
+                <div className="auth-logo-fallback hidden w-full h-full flex-col items-center justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-800 text-white font-black">
+                  <span className="text-xl tracking-tighter text-indigo-100 leading-none">BNY</span>
+                  <span className="text-[9px] text-rose-300 tracking-widest uppercase leading-none mt-1">SHOP</span>
+                </div>
               </div>
             </div>
             <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full border-2 border-slate-900 shadow-sm">
@@ -248,7 +240,22 @@ export const AuthModal: React.FC<Props> = ({ onSuccess }) => {
               className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold flex items-start gap-2.5"
             >
               <AlertCircle size={18} className="shrink-0 text-rose-600 mt-0.5" />
-              <span>{error}</span>
+              <div className="flex-1 space-y-1">
+                <p>{error}</p>
+                {mode === 'register' && error.includes('already registered') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError(null);
+                    }}
+                    id="switch-to-login-btn"
+                    className="inline-flex items-center gap-1 mt-1 text-indigo-700 hover:text-indigo-900 font-extrabold underline cursor-pointer"
+                  >
+                    Click here to Sign In now →
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
 
