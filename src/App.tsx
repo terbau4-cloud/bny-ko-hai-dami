@@ -31,9 +31,10 @@ export default function App() {
   const [games, setGames] = useState<Game[]>(() => {
     try {
       const cached = localStorage.getItem('bny_games');
-      return cached ? JSON.parse(cached) : [];
+      const parsed = cached ? JSON.parse(cached) : [];
+      return parsed.length > 0 ? parsed : INITIAL_GAMES;
     } catch {
-      return [];
+      return INITIAL_GAMES;
     }
   });
   const [isGamesLoading, setIsGamesLoading] = useState<boolean>(() => {
@@ -41,7 +42,7 @@ export default function App() {
       const cached = localStorage.getItem('bny_games');
       return !cached || JSON.parse(cached).length === 0;
     } catch {
-      return true;
+      return false;
     }
   });
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
@@ -53,17 +54,19 @@ export default function App() {
   const [banners, setBanners] = useState<AppBanner[]>(() => {
     try {
       const cached = localStorage.getItem('bny_banners');
-      return cached ? JSON.parse(cached) : [];
+      const parsed = cached ? JSON.parse(cached) : [];
+      return parsed.length > 0 ? parsed : INITIAL_BANNERS;
     } catch {
-      return [];
+      return INITIAL_BANNERS;
     }
   });
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
       const cached = localStorage.getItem('bny_categories');
-      return cached ? JSON.parse(cached) : [];
+      const parsed = cached ? JSON.parse(cached) : [];
+      return parsed.length > 0 ? parsed : INITIAL_CATEGORIES;
     } catch {
-      return [];
+      return INITIAL_CATEGORIES;
     }
   });
 
@@ -230,6 +233,10 @@ export default function App() {
           } catch {}
         } else {
           setGames(INITIAL_GAMES);
+          // Auto-seed initial games into Firestore database
+          INITIAL_GAMES.forEach((g) => {
+            setDoc(doc(db, 'games', g.id), g, { merge: true }).catch(() => {});
+          });
         }
 
         // Update selected game if currently viewing detail page
@@ -272,8 +279,15 @@ export default function App() {
           redirectLink: d.data().redirectLink || '',
           createdAt: d.data().createdAt || '',
         }));
-        setBanners(list);
-        try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
+        if (list.length > 0) {
+          setBanners(list);
+          try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
+        } else {
+          setBanners(INITIAL_BANNERS);
+          INITIAL_BANNERS.forEach((b) => {
+            setDoc(doc(db, 'banners', b.id), { imageUrl: b.imageUrl, redirectLink: b.redirectLink, createdAt: b.createdAt }, { merge: true }).catch(() => {});
+          });
+        }
       },
       (err) => {
         console.warn('Firestore banners snapshot warning:', err?.message || err);
@@ -288,8 +302,15 @@ export default function App() {
           name: d.data().name || '',
           createdAt: d.data().createdAt || '',
         }));
-        setCategories(list);
-        try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        if (list.length > 0) {
+          setCategories(list);
+          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        } else {
+          setCategories(INITIAL_CATEGORIES);
+          INITIAL_CATEGORIES.forEach((c) => {
+            setDoc(doc(db, 'categories', c.id), { name: c.name, createdAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+          });
+        }
       },
       (err) => {
         console.warn('Firestore categories snapshot warning:', err?.message || err);
