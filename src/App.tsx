@@ -160,6 +160,7 @@ export default function App() {
                     quantity: data.quantity,
                     playerId: data.playerId,
                     userEmail: data.userEmail || '',
+                    paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
                     requirementsData: data.requirementsData || [],
                     screenshotUrl: data.screenshotUrl,
                   };
@@ -306,7 +307,7 @@ export default function App() {
   };
 
   // Handle Wallet Top-Up Deposit
-  const handleAddTransaction = async (amount: number, screenshotUrl: string) => {
+  const handleAddTransaction = async (amount: number, screenshotUrl: string, paymentQrTitle?: string) => {
     if (profile.blocked) {
       alert('You have been blocked by Admin. You cannot submit deposit requests.');
       return;
@@ -314,6 +315,7 @@ export default function App() {
 
     const orderId = `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
     const userEmail = profile.email || authUser?.email || '';
+    const qrTitle = paymentQrTitle?.trim() || 'Payment QR';
 
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
@@ -323,7 +325,8 @@ export default function App() {
       date: 'Just Now',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'Pending',
-      description: 'Wallet Deposit',
+      description: `Wallet Deposit (${qrTitle})`,
+      paymentQrTitle: qrTitle,
       screenshotUrl,
       userEmail,
     };
@@ -342,7 +345,8 @@ export default function App() {
           date: 'Just Now',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           status: 'Pending',
-          description: 'Wallet Deposit',
+          description: `Wallet Deposit (${qrTitle})`,
+          paymentQrTitle: qrTitle,
           screenshotUrl,
           createdAt: new Date().toISOString(),
         });

@@ -5,7 +5,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface Props {
-  onAddTransaction: (amount: number, screenshotUrl: string) => void;
+  onAddTransaction: (amount: number, screenshotUrl: string, paymentQrTitle?: string) => void;
   currentBalance: number;
   isBlocked?: boolean;
 }
@@ -98,7 +98,8 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
       return;
     }
 
-    onAddTransaction(numAmount, screenshot);
+    const selectedQrTitle = paymentQrs[selectedQrIndex]?.title || (paymentQrs[0]?.title ?? 'Payment QR');
+    onAddTransaction(numAmount, screenshot, selectedQrTitle);
     setSubmitted(true);
 
     setTimeout(() => {

@@ -37,7 +37,6 @@ import {
   FileText,
   QrCode,
   TrendingUp,
-  PieChart as PieChartIcon,
   DollarSign
 } from 'lucide-react';
 import {
@@ -47,9 +46,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
   Legend,
   CartesianGrid,
 } from 'recharts';
@@ -509,6 +505,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             quantity: data.quantity,
             playerId: data.playerId,
             userEmail: data.userEmail || '',
+            paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
             requirementsData: data.requirementsData || [],
             screenshotUrl: data.screenshotUrl,
           };
@@ -703,98 +700,6 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     return [
       { date: todayDayName, sales: 0, orders: 0 }
     ];
-  };
-
-  const getPieData = () => {
-    const gameMap: Record<string, number> = {};
-    let totalSales = 0;
-    let hasRealTx = false;
-
-    transactionsList.forEach((tx) => {
-      if (tx.type !== 'deposit') {
-        const title = tx.gameTitle || tx.productName || tx.description || 'Topup Order';
-        const isEligible = tx.status === 'Approved' || tx.status === 'Completed' || tx.status === 'Pending';
-        const amt = isEligible ? Number(tx.amount || 0) : 0;
-        gameMap[title] = (gameMap[title] || 0) + amt;
-        totalSales += amt;
-        hasRealTx = true;
-      }
-    });
-
-    const storeGames = gamesList.map((g) => g.title);
-    const presetGames = [
-      'Free Fire Topup',
-      'Level Up Pass',
-      'Double Diamond',
-      'PUBG Mobile UC',
-      'Mobile Legends',
-      'Roblox Robux',
-      'Netflix Subscription',
-      'EFootball Coins',
-    ];
-    const allTitles = Array.from(new Set([...Object.keys(gameMap), ...storeGames, ...presetGames])).filter(Boolean);
-
-    if (hasRealTx && totalSales > 0) {
-      return allTitles.map((title) => {
-        const val = gameMap[title] || 0;
-        const pct = totalSales > 0 ? (val / totalSales) * 100 : 0;
-        return {
-          name: title,
-          pieValue: val,
-          realValue: val,
-          percent: pct,
-          hasRealData: true,
-        };
-      });
-    }
-
-    return allTitles.map((title) => ({
-      name: title,
-      pieValue: 1,
-      realValue: 0,
-      percent: 0,
-      hasRealData: false,
-    }));
-  };
-
-  const PIE_COLORS = [
-    '#f59e0b', // Amber / Gold
-    '#f97316', // Orange
-    '#0e7490', // Teal
-    '#16a34a', // Emerald Green
-    '#6b21a8', // Deep Purple
-    '#881337', // Maroon
-    '#2563eb', // Royal Blue
-    '#c026d3', // Magenta
-    '#0284c7', // Sky Cyan
-    '#dc2626', // Bright Red
-    '#e11d48', // Rose
-    '#4f46e5', // Indigo
-    '#059669', // Emerald
-    '#d97706', // Amber dark
-    '#7c3aed', // Violet
-  ];
-
-  const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, payload }: any) => {
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-    const displayPct = payload?.hasRealData ? `${(percent * 100).toFixed(1)}%` : '0%';
-
-    return (
-      <text
-        x={x}
-        y={y}
-        fill="white"
-        textAnchor="middle"
-        dominantBaseline="central"
-        className="text-[10px] sm:text-xs font-black drop-shadow-sm pointer-events-none"
-      >
-        {displayPct}
-      </text>
-    );
   };
 
   // Handle Approve Order / Deposit
@@ -1965,99 +1870,6 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 </ResponsiveContainer>
               </div>
             </div>
-
-            {/* Game Top-Up Distribution Pie Chart */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
-                    <PieChartIcon size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900">Game Top-Up Distribution</h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Share of total topup sales across games (auto-calculates live orders)
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-2">
-                {/* Solid Pie Chart Left */}
-                <div className="w-full md:w-3/5 h-72 sm:h-80 relative flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={
-                          getPieData().some((d) => d.hasRealData)
-                            ? getPieData().filter((d) => d.pieValue > 0)
-                            : getPieData()
-                        }
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={renderPieLabel}
-                        outerRadius={115}
-                        innerRadius={0}
-                        dataKey="pieValue"
-                        nameKey="name"
-                      >
-                        {(getPieData().some((d) => d.hasRealData)
-                          ? getPieData().filter((d) => d.pieValue > 0)
-                          : getPieData()
-                        ).map((entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={PIE_COLORS[index % PIE_COLORS.length]}
-                            stroke="#ffffff"
-                            strokeWidth={2}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', borderColor: '#e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                        formatter={(val: any, name: any, props: any) => [
-                          `RS ${props.payload?.realValue ?? 0}`,
-                          'Sales Volume',
-                        ]}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Legend Right List */}
-                <div className="w-full md:w-2/5 max-h-72 overflow-y-auto space-y-2.5 pr-2 custom-scrollbar">
-                  {getPieData().map((entry, idx) => {
-                    const displayPct = entry.hasRealData ? `${entry.percent.toFixed(1)}%` : '0%';
-                    const displayVal = entry.hasRealData ? entry.realValue : 0;
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span
-                            className="w-4 h-4 rounded-sm shrink-0 shadow-2xs"
-                            style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
-                          />
-                          <span className="text-xs font-bold text-slate-800 truncate" title={entry.name}>
-                            {entry.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg">
-                            {displayPct}
-                          </span>
-                          <span className="text-[11px] font-mono font-semibold text-slate-500">
-                            RS {displayVal}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -2480,6 +2292,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 return (
                   (tx.orderId && tx.orderId.toLowerCase().includes(q)) ||
                   (tx.description && tx.description.toLowerCase().includes(q)) ||
+                  (tx.paymentQrTitle && tx.paymentQrTitle.toLowerCase().includes(q)) ||
                   tx.amount.toString().includes(q)
                 );
               });
@@ -2494,45 +2307,51 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
               return (
                 <div className="space-y-3">
-                  {filteredDeposits.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
-                    >
-                      <div className="space-y-1.5 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
-                            {tx.orderId || 'DEP'}
-                          </span>
-                          <span
-                            className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
-                              tx.status === 'Approved' || tx.status === 'Completed'
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                : tx.status === 'Pending'
-                                ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                : 'bg-rose-100 text-rose-800 border-rose-200'
-                            }`}
-                          >
-                            {tx.status === 'Approved' ? 'Completed' : tx.status}
-                          </span>
-                          <span className="text-xs font-bold text-slate-400">{tx.time}</span>
-                          {tx.userEmail && (
-                            <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/50">
-                              ✉️ {tx.userEmail}
+                  {filteredDeposits.map((tx) => {
+                    const detectedQr = tx.paymentQrTitle || (tx.description && tx.description.match(/\(([^)]+)\)/)?.[1]) || 'Payment QR';
+                    return (
+                      <div
+                        key={tx.id}
+                        className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
+                      >
+                        <div className="space-y-1.5 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
+                              {tx.orderId || 'DEP'}
                             </span>
-                          )}
-                        </div>
+                            <span
+                              className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                                tx.status === 'Approved' || tx.status === 'Completed'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  : tx.status === 'Pending'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : 'bg-rose-100 text-rose-800 border-rose-200'
+                              }`}
+                            >
+                              {tx.status === 'Approved' ? 'Completed' : tx.status}
+                            </span>
+                            <span className="text-xs font-bold text-slate-400">{tx.time}</span>
+                            {tx.userEmail && (
+                              <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/50">
+                                ✉️ {tx.userEmail}
+                              </span>
+                            )}
+                          </div>
 
-                        <div className="text-base font-black text-slate-900">
-                          {tx.description === 'Wallet Deposit via QR Payment' ? 'Wallet Deposit' : (tx.description?.replace(/via QR Payment/gi, '').trim() || 'Wallet Deposit')}
-                        </div>
+                          <div className="text-base font-black text-slate-900 flex items-center gap-2 flex-wrap">
+                            <span>Wallet Deposit</span>
+                            <span className="inline-flex items-center gap-1.5 bg-purple-100 text-purple-900 border border-purple-200/80 font-black text-xs px-2.5 py-0.5 rounded-lg shadow-2xs">
+                              <QrCode size={13} className="text-purple-600" />
+                              <span>Paid via QR: {detectedQr}</span>
+                            </span>
+                          </div>
 
-                        <div className="flex items-center gap-3 text-xs text-slate-600">
-                          <span className="font-black text-emerald-600 text-base">
-                            RS {tx.amount}
-                          </span>
+                          <div className="flex items-center gap-3 text-xs text-slate-600">
+                            <span className="font-black text-emerald-600 text-base">
+                              RS {tx.amount}
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
                       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
                         {tx.screenshotUrl && (
@@ -2572,7 +2391,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                         )}
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               );
             })()}

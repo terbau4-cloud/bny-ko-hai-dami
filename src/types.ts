@@ -40,6 +40,7 @@ export interface Transaction {
   status: 'Completed' | 'Pending' | 'Approved' | 'Rejected';
   screenshotUrl?: string;
   description: string;
+  paymentQrTitle?: string;
   gameId?: string;
   gameTitle?: string;
   gameIcon?: string;
