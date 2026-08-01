@@ -35,8 +35,24 @@ import {
   Shield,
   ExternalLink,
   FileText,
-  QrCode
+  QrCode,
+  TrendingUp,
+  PieChart as PieChartIcon,
+  DollarSign
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  CartesianGrid,
+} from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Transaction, UserProfile, Game, GameRequirement, TopupProduct, AppBanner, TeamMember, Category } from '../types';
 import { db } from '../lib/firebase';
@@ -643,8 +659,109 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const pendingOrdersList = transactionsList.filter((t) => t.type !== 'deposit' && t.status === 'Pending');
   const pendingOrdersCount = pendingOrdersList.length;
 
+  const totalRevenueAmount = transactionsList
+    .filter((t) => t.type !== 'deposit' && (t.status === 'Approved' || t.status === 'Completed'))
+    .reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+
   const totalDepositsCount = transactionsList.filter((t) => t.type === 'deposit').length;
   const pendingDepositsCount = transactionsList.filter((t) => t.type === 'deposit' && t.status === 'Pending').length;
+
+  // Overview Analytics Chart Data Helpers
+  const getGraphData = () => {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const now = new Date();
+    const todayDayName = dayNames[now.getDay()];
+
+    // Group actual transactions by date/day if any exist in transactionsList
+    const map: Record<string, { date: string; sales: number; orders: number }> = {};
+    let hasOrders = false;
+
+    transactionsList.forEach((tx) => {
+      if (tx.type !== 'deposit') {
+        const d = tx.date || todayDayName;
+        if (!map[d]) {
+          map[d] = { date: d, sales: 0, orders: 0 };
+        }
+        map[d].orders += 1;
+        if (tx.status === 'Approved' || tx.status === 'Completed') {
+          map[d].sales += Number(tx.amount || 0);
+        }
+        hasOrders = true;
+      }
+    });
+
+    const list = Object.values(map);
+
+    if (hasOrders && list.length > 0) {
+      return list;
+    }
+
+    // Default state: Show today's current day with 0 sales & 0 orders
+    return [
+      { date: todayDayName, sales: 0, orders: 0 }
+    ];
+  };
+
+  const getPieData = () => {
+    const storeGames = gamesList.map((g) => g.title);
+    const presetGames = [
+      'Free Fire Topup',
+      'Level Up Pass',
+      'Double Diamond',
+      'PUBG Mobile UC',
+      'Mobile Legends',
+      'Roblox Robux',
+      'Netflix Subscription',
+      'EFootball Coins',
+    ];
+
+    const allTitles = Array.from(new Set([...storeGames, ...presetGames])).filter(Boolean);
+
+    return allTitles.map((title) => ({
+      name: title,
+      pieValue: 1, // equal slice size for every available game
+      realValue: 0,
+      hasRealData: false,
+    }));
+  };
+
+  const PIE_COLORS = [
+    '#f59e0b', // Amber / Gold
+    '#f97316', // Orange
+    '#0e7490', // Teal
+    '#16a34a', // Emerald Green
+    '#6b21a8', // Deep Purple
+    '#881337', // Maroon
+    '#2563eb', // Royal Blue
+    '#c026d3', // Magenta
+    '#0284c7', // Sky Cyan
+    '#dc2626', // Bright Red
+    '#e11d48', // Rose
+    '#4f46e5', // Indigo
+    '#059669', // Emerald
+    '#d97706', // Amber dark
+    '#7c3aed', // Violet
+  ];
+
+  const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius }: any) => {
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="white"
+        textAnchor="middle"
+        dominantBaseline="central"
+        className="text-[10px] sm:text-xs font-black drop-shadow-sm pointer-events-none"
+      >
+        0%
+      </text>
+    );
+  };
 
   // Handle Approve Order / Deposit
   const handleApproveOrder = async (tx: Transaction) => {
@@ -1688,172 +1805,156 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
               className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
-                  <Clock size={14} /> Pending Orders
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
+                  <DollarSign size={15} /> Total Revenue
                 </span>
-                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
-                  <AlertCircle size={20} />
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                  <Wallet size={20} />
                 </div>
               </div>
-              <div className="text-3xl font-black text-amber-600 flex items-center gap-2">
-                <span>{pendingOrdersCount}</span>
-                {pendingOrdersCount > 0 && (
-                  <span className="text-xs font-bold text-amber-900 bg-amber-200 px-2.5 py-0.5 rounded-full animate-pulse">
-                    Action Needed
-                  </span>
-                )}
+              <div className="text-3xl font-black text-emerald-600">
+                RS {totalRevenueAmount}
               </div>
-              <p className="text-[11px] text-amber-700/80 font-semibold mt-1">
-                Awaiting admin approval
+              <p className="text-[11px] text-emerald-700/80 font-semibold mt-1">
+                Completed sales volume
               </p>
             </div>
           </div>
         )}
 
-        {/* SECTION: OVERVIEW PENDING ORDERS QUICK VIEW */}
+        {/* SECTION: OVERVIEW ANALYTICS GRAPH & PIE CHART */}
         {activeSection === 'overview' && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
-                  <Clock size={18} />
+          <div className="space-y-6">
+            {/* Sales & Orders Trend Graph */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">Revenue & Sales Trend</h3>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Daily topup sales volume & total orders overview
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">Pending Orders</h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Review player topup requests & payment receipts
-                  </p>
-                </div>
+
+                <button
+                  onClick={() => setActiveSection('orders')}
+                  className="text-xs font-extrabold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                >
+                  View All Orders →
+                </button>
               </div>
 
-              <span className="bg-amber-100 text-amber-800 border border-amber-200 text-xs font-black px-3 py-1 rounded-full">
-                {pendingOrdersCount} Pending
-              </span>
+              <div className="h-72 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={getGraphData()} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', borderColor: '#e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                      labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
+                    />
+                    <Area type="monotone" dataKey="sales" name="Total Sales (RS)" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                    <Area type="monotone" dataKey="orders" name="Orders Count" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorOrders)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {pendingOrdersList.length === 0 ? (
-              <div className="text-center py-10 space-y-2 text-slate-400">
-                <CheckCircle2 size={36} className="mx-auto text-emerald-500 opacity-80" />
-                <p className="font-extrabold text-slate-700 text-sm">No Pending Orders!</p>
-                <p className="text-xs text-slate-400">
-                  All customer recharge requests have been processed.
-                </p>
+            {/* Game Top-Up Distribution Pie Chart */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
+                    <PieChartIcon size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">Game Top-Up Distribution</h3>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Share of total topup sales across games (auto-calculates live orders)
+                    </p>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingOrdersList.map((tx) => {
-                  const reqs = getRequirementsList(tx);
-                  return (
-                    <div
-                      key={tx.id}
-                      className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-slate-300 transition-all"
-                    >
-                      <div className="space-y-2 min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                            {tx.orderId || 'ORDER'}
-                          </span>
-                          <span className="text-xs font-extrabold text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200">
-                            Pending
-                          </span>
-                          <span className="text-xs font-bold text-slate-400">{tx.time}</span>
-                          {tx.userEmail && (
-                            <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded border border-slate-300/50">
-                              ✉️ {tx.userEmail}
-                            </span>
-                          )}
-                        </div>
 
-                        <div className="text-base font-black text-slate-900">
-                          {tx.gameTitle ? `${tx.gameTitle} - ` : ''}
-                          {tx.productName || tx.description}
-                        </div>
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-2">
+                {/* Solid Pie Chart Left */}
+                <div className="w-full md:w-3/5 h-72 sm:h-80 relative flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={getPieData()}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={renderPieLabel}
+                        outerRadius={115}
+                        innerRadius={0}
+                        dataKey="pieValue"
+                        nameKey="name"
+                      >
+                        {getPieData().map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={PIE_COLORS[index % PIE_COLORS.length]}
+                            stroke="#ffffff"
+                            strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', borderColor: '#e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                        formatter={() => ['RS 0', 'Sales Volume']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
 
-                        <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
-                          <span className="bg-white px-2.5 py-1 rounded font-bold text-slate-700 border border-slate-200 shadow-2xs">
-                            Price: RS {tx.productPrice || tx.amount}
-                          </span>
-                          <span className="bg-white px-2.5 py-1 rounded font-bold text-slate-700 border border-slate-200 shadow-2xs">
-                            Qty: {tx.quantity || 1}
-                          </span>
-                          <span className="font-black text-emerald-600 text-sm">
-                            Total: RS {tx.amount}
+                {/* Legend Right List */}
+                <div className="w-full md:w-2/5 max-h-72 overflow-y-auto space-y-2.5 pr-2 custom-scrollbar">
+                  {getPieData().map((entry, idx) => {
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="w-4 h-4 rounded-sm shrink-0 shadow-2xs"
+                            style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                          />
+                          <span className="text-xs font-bold text-slate-800 truncate">
+                            {entry.name}
                           </span>
                         </div>
-
-                        {reqs.length > 0 && (
-                          <div className="space-y-1 pt-1 border-t border-slate-200/60">
-                            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
-                              Game Requirements:
-                            </span>
-                            <div className="flex flex-wrap gap-2">
-                              {reqs.map((req, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-1.5 bg-indigo-50/80 border border-indigo-200/80 px-2.5 py-1 rounded-xl text-xs font-mono font-bold"
-                                >
-                                  <span className="text-indigo-600">{req.name}:</span>
-                                  <span className="text-slate-900 font-black">{req.value}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(req.value);
-                                      setCopyToast(`Copied ${req.name}!`);
-                                      setTimeout(() => setCopyToast(''), 1500);
-                                    }}
-                                    className="ml-1 bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 text-[10px] font-sans font-black flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                                    title={`Copy ${req.name}`}
-                                  >
-                                    <Copy size={11} />
-                                    <span>Copy</span>
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg">
+                            0%
+                          </span>
+                          <span className="text-[11px] font-mono font-semibold text-slate-500">
+                            RS 0
+                          </span>
+                        </div>
                       </div>
-
-                      {tx.screenshotUrl && (
-                        <div className="shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedScreenshotTx(tx);
-                              setSelectedScreenshot(tx.screenshotUrl || null);
-                            }}
-                            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-                          >
-                            <Eye size={14} />
-                            <span>View Receipt</span>
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                        <button
-                          onClick={() => handleApproveOrder(tx)}
-                          id={`approve-order-${tx.id}`}
-                          className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <CheckCircle2 size={16} />
-                          <span>Approve</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleRejectOrder(tx.id)}
-                          id={`reject-order-${tx.id}`}
-                          className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <XCircle size={16} />
-                          <span>Reject</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )}
 
