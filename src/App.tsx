@@ -31,18 +31,17 @@ export default function App() {
   const [games, setGames] = useState<Game[]>(() => {
     try {
       const cached = localStorage.getItem('bny_games');
-      const parsed = cached ? JSON.parse(cached) : [];
-      return parsed.length > 0 ? parsed : INITIAL_GAMES;
+      return cached ? JSON.parse(cached) : [];
     } catch {
-      return INITIAL_GAMES;
+      return [];
     }
   });
   const [isGamesLoading, setIsGamesLoading] = useState<boolean>(() => {
     try {
       const cached = localStorage.getItem('bny_games');
-      return !cached || JSON.parse(cached).length === 0;
+      return !cached;
     } catch {
-      return false;
+      return true;
     }
   });
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
@@ -54,19 +53,17 @@ export default function App() {
   const [banners, setBanners] = useState<AppBanner[]>(() => {
     try {
       const cached = localStorage.getItem('bny_banners');
-      const parsed = cached ? JSON.parse(cached) : [];
-      return parsed.length > 0 ? parsed : INITIAL_BANNERS;
+      return cached ? JSON.parse(cached) : [];
     } catch {
-      return INITIAL_BANNERS;
+      return [];
     }
   });
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
       const cached = localStorage.getItem('bny_categories');
-      const parsed = cached ? JSON.parse(cached) : [];
-      return parsed.length > 0 ? parsed : INITIAL_CATEGORIES;
+      return cached ? JSON.parse(cached) : [];
     } catch {
-      return INITIAL_CATEGORIES;
+      return [];
     }
   });
 
@@ -226,18 +223,10 @@ export default function App() {
             requirements: data.requirements || [],
           };
         });
-        if (loadedGames.length > 0) {
-          setGames(loadedGames);
-          try {
-            localStorage.setItem('bny_games', JSON.stringify(loadedGames));
-          } catch {}
-        } else {
-          setGames(INITIAL_GAMES);
-          // Auto-seed initial games into Firestore database
-          INITIAL_GAMES.forEach((g) => {
-            setDoc(doc(db, 'games', g.id), g, { merge: true }).catch(() => {});
-          });
-        }
+        setGames(loadedGames);
+        try {
+          localStorage.setItem('bny_games', JSON.stringify(loadedGames));
+        } catch {}
 
         // Update selected game if currently viewing detail page
         setSelectedGame((prev) => {
@@ -279,15 +268,8 @@ export default function App() {
           redirectLink: d.data().redirectLink || '',
           createdAt: d.data().createdAt || '',
         }));
-        if (list.length > 0) {
-          setBanners(list);
-          try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
-        } else {
-          setBanners(INITIAL_BANNERS);
-          INITIAL_BANNERS.forEach((b) => {
-            setDoc(doc(db, 'banners', b.id), { imageUrl: b.imageUrl, redirectLink: b.redirectLink, createdAt: b.createdAt }, { merge: true }).catch(() => {});
-          });
-        }
+        setBanners(list);
+        try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
       },
       (err) => {
         console.warn('Firestore banners snapshot warning:', err?.message || err);
@@ -302,15 +284,8 @@ export default function App() {
           name: d.data().name || '',
           createdAt: d.data().createdAt || '',
         }));
-        if (list.length > 0) {
-          setCategories(list);
-          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
-        } else {
-          setCategories(INITIAL_CATEGORIES);
-          INITIAL_CATEGORIES.forEach((c) => {
-            setDoc(doc(db, 'categories', c.id), { name: c.name, createdAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-          });
-        }
+        setCategories(list);
+        try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
       },
       (err) => {
         console.warn('Firestore categories snapshot warning:', err?.message || err);
