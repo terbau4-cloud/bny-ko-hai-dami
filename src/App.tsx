@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TabType, Game, Transaction, UserProfile, TopupProduct, AppBanner } from './types';
+import { TabType, Game, Transaction, UserProfile, TopupProduct, AppBanner, Category } from './types';
 import { INITIAL_GAMES, INITIAL_TRANSACTIONS, INITIAL_PROFILE } from './data/initialData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -33,9 +33,10 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
-  // Dynamic Banners and Team Members
+  // Dynamic Banners, Categories and Team Members
   const [teamMembers, setTeamMembers] = useState<string[]>([]);
   const [banners, setBanners] = useState<AppBanner[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Auth States
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
@@ -232,9 +233,25 @@ export default function App() {
       }
     );
 
+    const unsubCategories = onSnapshot(
+      collection(db, 'categories'),
+      (snap) => {
+        const list: Category[] = snap.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setCategories(list);
+      },
+      (err) => {
+        console.error('Firestore categories snapshot error:', err);
+      }
+    );
+
     return () => {
       unsubMembers();
       unsubBanners();
+      unsubCategories();
     };
   }, []);
 
@@ -461,6 +478,7 @@ export default function App() {
           <HomeTab
             games={games}
             banners={banners}
+            categories={categories}
             onSelectGame={(game) => setSelectedGame(game)}
           />
         )}

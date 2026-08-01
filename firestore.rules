@@ -2,26 +2,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
     match /transactions/{transactionId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
     match /games/{gameId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
     match /banners/{bannerId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
     match /payment_qrs/{qrId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
     match /team_members/{memberId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if true;
+    }
+    match /categories/{categoryId} {
+      allow read, write: if true;
     }
   }
 }

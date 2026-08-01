@@ -38,7 +38,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Transaction, UserProfile, Game, GameRequirement, TopupProduct, AppBanner, TeamMember } from '../types';
+import { Transaction, UserProfile, Game, GameRequirement, TopupProduct, AppBanner, TeamMember, Category } from '../types';
 import { db } from '../lib/firebase';
 import {
   collection,
@@ -98,7 +98,7 @@ const compressImage = (file: File, maxWidth = 500, quality = 0.65): Promise<stri
 
 export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
-  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'games' | 'banner' | 'members' | 'payment'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'orders' | 'deposits' | 'categories' | 'games' | 'banner' | 'members' | 'game_description' | 'payment'>('overview');
 
   const normalizedEmail = (adminEmail || '').toLowerCase().trim();
   const isMasterAdmin = normalizedEmail === 'bnyeshop@gmail.com';
@@ -120,6 +120,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
   const [selectedScreenshotTx, setSelectedScreenshotTx] = useState<Transaction | null>(null);
   const [copyToast, setCopyToast] = useState<string>('');
+
+  // Categories state & modal
+  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryNameInput, setCategoryNameInput] = useState<string>('');
+  const [categoryLoading, setCategoryLoading] = useState<boolean>(false);
 
   // Banners, Team Members & Payment QRs state
   const [bannersList, setBannersList] = useState<AppBanner[]>([]);
@@ -194,12 +201,104 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       }
     );
 
+    const unsubCategories = onSnapshot(
+      collection(db, 'categories'),
+      (snap) => {
+        const list: Category[] = snap.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setCategoriesList(list);
+      },
+      (err) => {
+        console.error('Admin categories snapshot error:', err);
+      }
+    );
+
     return () => {
       unsubBanners();
       unsubMembers();
       unsubQRs();
+      unsubCategories();
     };
   }, []);
+
+  // Category Save / Delete Handlers
+  const handleSaveCategory = async () => {
+    if (!categoryNameInput.trim()) return;
+    setCategoryLoading(true);
+    try {
+      const catId = editingCategory ? editingCategory.id : `cat_${Date.now()}`;
+      await setDoc(doc(db, 'categories', catId), {
+        name: categoryNameInput.trim(),
+        createdAt: editingCategory?.createdAt || new Date().toISOString(),
+      });
+      setIsCategoryModalOpen(false);
+      setEditingCategory(null);
+      setCategoryNameInput('');
+    } catch (err) {
+      console.error('Save category error:', err);
+      alert('Failed to save category');
+    } finally {
+      setCategoryLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string) => {
+    if (!window.confirm('Are you sure you want to delete this category?')) return;
+    try {
+      await deleteDoc(doc(db, 'categories', catId));
+    } catch (err) {
+      console.error('Delete category error:', err);
+      alert('Failed to delete category');
+    }
+  };
+
+  // Game Description States & Handlers
+  const [selectedDescGame, setSelectedDescGame] = useState<Game | null>(null);
+  const [descInput, setDescInput] = useState<string>('');
+  const [descLoading, setDescLoading] = useState<boolean>(false);
+  const [descToast, setDescToast] = useState<string>('');
+
+  const handleSaveGameDescription = async () => {
+    if (!selectedDescGame) return;
+    setDescLoading(true);
+    try {
+      const cleanDesc = descInput.trim();
+      await updateDoc(doc(db, 'games', selectedDescGame.id), {
+        description: cleanDesc,
+      });
+      setDescToast('Game description saved successfully!');
+      setSelectedDescGame((prev) => (prev ? { ...prev, description: cleanDesc } : null));
+      setTimeout(() => setDescToast(''), 3000);
+    } catch (err) {
+      console.error('Save game description error:', err);
+      alert('Failed to save game description');
+    } finally {
+      setDescLoading(false);
+    }
+  };
+
+  const handleDeleteGameDescription = async () => {
+    if (!selectedDescGame) return;
+    if (!window.confirm('Are you sure you want to delete/clear this game description?')) return;
+    setDescLoading(true);
+    try {
+      await updateDoc(doc(db, 'games', selectedDescGame.id), {
+        description: '',
+      });
+      setDescInput('');
+      setSelectedDescGame((prev) => (prev ? { ...prev, description: '' } : null));
+      setDescToast('Game description deleted successfully!');
+      setTimeout(() => setDescToast(''), 3000);
+    } catch (err) {
+      console.error('Delete game description error:', err);
+      alert('Failed to delete game description');
+    } finally {
+      setDescLoading(false);
+    }
+  };
 
   const getRequirementsList = (tx: Transaction) => {
     if (tx.requirementsData && tx.requirementsData.length > 0) {
@@ -268,6 +367,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [gameTitleInput, setGameTitleInput] = useState<string>('');
   const [gameLogoInput, setGameLogoInput] = useState<string>('');
+  const [gameCategoryInput, setGameCategoryInput] = useState<string>('');
 
   // Requirement Modal States
   const [isRequirementModalOpen, setIsRequirementModalOpen] = useState<boolean>(false);
@@ -690,11 +790,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     if (!gameTitleInput.trim()) return;
 
     try {
+      const selectedCategory = gameCategoryInput.trim() || categoriesList[0]?.name || 'Popular Games';
       if (editingGame) {
         // Edit existing game
         const updatedDoc: Partial<Game> = {
           title: gameTitleInput.trim(),
           coverImg: gameLogoInput.trim(),
+          category: selectedCategory,
         };
         await updateDoc(doc(db, 'games', editingGame.id), updatedDoc);
       } else {
@@ -705,7 +807,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           title: gameTitleInput.trim(),
           coverImg: gameLogoInput.trim(),
           icon: '🎮',
-          category: 'action',
+          category: selectedCategory,
           rating: 4.8,
           color: 'from-indigo-600 to-purple-600',
           bgGradient: 'bg-gradient-to-br from-indigo-600 to-purple-700',
@@ -722,6 +824,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       setEditingGame(null);
       setGameTitleInput('');
       setGameLogoInput('');
+      setGameCategoryInput('');
     } catch (err) {
       console.error('Error saving game:', err);
     }
@@ -1380,6 +1483,29 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
                   {isMasterAdmin && (
                     <>
+                      {/* Category Option - Right above Games Management */}
+                      <button
+                        onClick={() => {
+                          setActiveSection('categories');
+                          setSelectedAdminGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-categories"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'categories'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Layers size={18} />
+                          <span>Category</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {categoriesList.length}
+                        </span>
+                      </button>
+
                       <button
                         onClick={() => {
                           setActiveSection('games');
@@ -1468,6 +1594,30 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                         </div>
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                           {teamMembersList.length}
+                        </span>
+                      </button>
+
+                      {/* Game Description Navigation Option - Right below Add Member */}
+                      <button
+                        onClick={() => {
+                          setActiveSection('game_description');
+                          setSelectedAdminGame(null);
+                          setSelectedDescGame(null);
+                          setDrawerOpen(false);
+                        }}
+                        id="drawer-nav-game-description"
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-sm transition-all cursor-pointer ${
+                          activeSection === 'game_description'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText size={18} />
+                          <span>Game Description</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {gamesList.length}
                         </span>
                       </button>
                     </>
@@ -2225,6 +2375,104 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           </div>
         )}
 
+        {/* SECTION: CATEGORY MANAGEMENT */}
+        {activeSection === 'categories' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-6 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                  <Layers size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Category Management</h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Add and manage categories for games and topup items
+                  </p>
+                </div>
+              </div>
+
+              {/* Add Category Option / Button */}
+              <button
+                onClick={() => {
+                  setEditingCategory(null);
+                  setCategoryNameInput('');
+                  setIsCategoryModalOpen(true);
+                }}
+                id="add-category-btn"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+              >
+                <Plus size={16} />
+                <span>Add Category</span>
+              </button>
+            </div>
+
+            {/* Below Available Categories with Edit and Delete Options */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">
+                Available Categories ({categoriesList.length})
+              </h4>
+
+              {categoriesList.length === 0 ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center space-y-3">
+                  <Layers size={36} className="text-slate-300 mx-auto" />
+                  <p className="text-slate-600 font-bold text-sm">No categories added yet.</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Click "Add Category" above to create your first game top-up category.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setEditingCategory(null);
+                      setCategoryNameInput('');
+                      setIsCategoryModalOpen(true);
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Plus size={14} />
+                    <span>Add First Category</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {categoriesList.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between shadow-2xs hover:border-indigo-200 transition-all"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 font-black text-xs flex items-center justify-center">
+                          <Layers size={16} />
+                        </div>
+                        <span className="font-extrabold text-slate-900 text-sm">{cat.name}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingCategory(cat);
+                            setCategoryNameInput(cat.name);
+                            setIsCategoryModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                          title="Edit Category"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(cat.id)}
+                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                          title="Delete Category"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* SECTION 4: GAMES MANAGEMENT (when selectedAdminGame is null) */}
         {activeSection === 'games' && !selectedAdminGame && (
           <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-6 shadow-2xs">
@@ -2247,6 +2495,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   setEditingGame(null);
                   setGameTitleInput('');
                   setGameLogoInput('');
+                  setGameCategoryInput(categoriesList[0]?.name || '');
                   setIsGameModalOpen(true);
                 }}
                 id="add-game-btn"
@@ -2307,6 +2556,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                           setEditingGame(game);
                           setGameTitleInput(game.title);
                           setGameLogoInput(game.coverImg || '');
+                          setGameCategoryInput(game.category || categoriesList[0]?.name || '');
                           setIsGameModalOpen(true);
                         }}
                         id={`edit-game-${game.id}`}
@@ -2859,6 +3109,171 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             </div>
           </div>
         )}
+
+        {/* SECTION 8: GAME DESCRIPTION MANAGEMENT */}
+        {activeSection === 'game_description' && isMasterAdmin && (
+          <div className="space-y-6">
+            {!selectedDescGame ? (
+              /* All Available Games List */
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-6 shadow-2xs">
+                <div className="border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                      <FileText size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900">Game Descriptions</h3>
+                      <p className="text-xs text-slate-500 font-semibold">
+                        Select a game below to write, edit, or delete its description displayed on the topup page.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {gamesList.map((game) => {
+                    const hasDesc = !!(game.description && game.description.trim().length > 0);
+                    return (
+                      <div
+                        key={game.id}
+                        onClick={() => {
+                          setSelectedDescGame(game);
+                          setDescInput(game.description || '');
+                        }}
+                        id={`select-desc-game-${game.id}`}
+                        className="bg-slate-50 border border-slate-200 hover:border-indigo-500 rounded-2xl p-4 flex flex-col justify-between transition-all cursor-pointer shadow-2xs hover:shadow-md group"
+                      >
+                        <div className="flex items-center gap-3">
+                          {game.coverImg ? (
+                            <img
+                              src={game.coverImg}
+                              alt={game.title}
+                              className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-lg shrink-0">
+                              {game.icon || '🎮'}
+                            </div>
+                          )}
+
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-black text-slate-900 text-sm truncate group-hover:text-indigo-600 transition-colors">
+                              {game.title}
+                            </h4>
+                            <span
+                              className={`inline-block text-[10px] font-extrabold px-2 py-0.5 rounded-full mt-1 ${
+                                hasDesc
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {hasDesc ? '✓ Description Set' : 'No Description'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {hasDesc && (
+                          <p className="text-xs text-slate-500 line-clamp-2 mt-3 pt-2 border-t border-slate-200/60 font-medium">
+                            {game.description}
+                          </p>
+                        )}
+
+                        <button className="mt-3 w-full py-2 bg-white hover:bg-indigo-600 hover:text-white border border-slate-200 text-indigo-600 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs">
+                          <Edit2 size={13} />
+                          <span>{hasDesc ? 'Edit Description' : 'Write Description'}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* Single Game Description Editor Page */
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-6 shadow-2xs">
+                {/* Header with Back button */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <button
+                    onClick={() => setSelectedDescGame(null)}
+                    className="flex items-center gap-2 text-indigo-600 font-extrabold text-xs bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-xl transition-all cursor-pointer"
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Back to All Games</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    {selectedDescGame.coverImg && (
+                      <img
+                        src={selectedDescGame.coverImg}
+                        alt={selectedDescGame.title}
+                        className="w-8 h-8 rounded-lg object-cover border border-slate-200"
+                      />
+                    )}
+                    <span className="font-black text-slate-900 text-base">
+                      {selectedDescGame.title}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Description Textarea Form */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider block mb-1">
+                      Write Description
+                    </label>
+                    <p className="text-xs text-slate-500 mb-3 font-semibold">
+                      This description will be shown to users above the "Select Recharge Package" section on the game page.
+                    </p>
+                    <textarea
+                      rows={6}
+                      value={descInput}
+                      onChange={(e) => setDescInput(e.target.value)}
+                      placeholder="Write game instructions, notes, delivery times, or product description here..."
+                      id="game-desc-editor-textarea"
+                      className="w-full p-4 bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl text-slate-900 font-semibold text-sm outline-none transition-all shadow-xs"
+                    />
+                  </div>
+
+                  {descToast && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+                      <Check size={16} />
+                      <span>{descToast}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <button
+                      onClick={handleDeleteGameDescription}
+                      disabled={descLoading || !selectedDescGame.description}
+                      id="delete-desc-btn"
+                      className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
+                    >
+                      <Trash2 size={15} />
+                      <span>Delete Description</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedDescGame(null)}
+                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveGameDescription}
+                        disabled={descLoading}
+                        id="save-desc-btn"
+                        className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                      >
+                        <Check size={15} />
+                        <span>{descLoading ? 'Saving...' : 'Save Description'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* MODAL 1: ADD / EDIT GAME */}
@@ -2891,6 +3306,36 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                     id="game-name-input"
                     className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Category
+                  </label>
+                  {categoriesList.length > 0 ? (
+                    <select
+                      value={gameCategoryInput}
+                      onChange={(e) => setGameCategoryInput(e.target.value)}
+                      id="game-category-select"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                    >
+                      <option value="">-- Select Category --</option>
+                      {categoriesList.map((cat) => (
+                        <option key={cat.id} value={cat.name}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={gameCategoryInput}
+                      onChange={(e) => setGameCategoryInput(e.target.value)}
+                      placeholder="e.g. Popular Games, Direct Topup"
+                      id="game-category-input"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm rounded-xl outline-none focus:border-indigo-600 focus:bg-white"
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -3645,6 +4090,58 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50"
                 >
                   {bannerLoading ? 'Saving...' : 'Save Banner'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: ADD / EDIT CATEGORY */}
+      <AnimatePresence>
+        {isCategoryModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-900 text-base">
+                  {editingCategory ? 'Edit Category' : 'Add New Category'}
+                </h3>
+                <button
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Category Name
+                </label>
+                <input
+                  type="text"
+                  value={categoryNameInput}
+                  onChange={(e) => setCategoryNameInput(e.target.value)}
+                  placeholder="e.g. Popular Games, Gift Cards, Direct Topup..."
+                  id="category-name-modal-input"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveCategory}
+                  disabled={!categoryNameInput.trim() || categoryLoading}
+                  id="save-category-modal-btn"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {categoryLoading ? 'Saving...' : editingCategory ? 'Update Category' : 'Add Category'}
                 </button>
               </div>
             </div>

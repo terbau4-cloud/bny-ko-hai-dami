@@ -53,6 +53,15 @@
         "createdAt": { "type": "string", "description": "Creation timestamp" }
       },
       "required": ["email"]
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "Game top-up and store categories",
+      "properties": {
+        "name": { "type": "string", "description": "Category name" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["name"]
     }
   }
 }

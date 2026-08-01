@@ -17,7 +17,7 @@ export interface Game {
   id: string;
   title: string;
   publisher?: string;
-  category: 'arcade' | 'puzzle' | 'action' | 'sports';
+  category?: string;
   rating: number;
   icon: string;
   coverImg?: string;
@@ -80,5 +80,12 @@ export interface TeamMember {
   email: string;
   createdAt?: string;
 }
+
+export interface Category {
+  id: string;
+  name: string;
+  createdAt?: string;
+}
+
 
 

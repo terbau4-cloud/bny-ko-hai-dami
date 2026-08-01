@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Game, TopupProduct } from '../types';
-import { ArrowLeft, Check, Plus, Minus, CreditCard, ShieldCheck, UserCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Minus, CreditCard, ShieldCheck, UserCheck, Sparkles, Info } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -205,6 +205,19 @@ export const TopupDetailPage: React.FC<Props> = ({
                 ))}
               </div>
             </div>
+
+            {/* Game Description (if added in Admin) */}
+            {game.description && game.description.trim().length > 0 && (
+              <div className="bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border-2 border-indigo-100 rounded-2xl p-4 text-slate-800 space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-1.5 font-black text-indigo-700 text-xs uppercase tracking-wider">
+                  <Info size={15} />
+                  <span>Game Info & Instructions</span>
+                </div>
+                <p className="text-slate-700 font-semibold text-xs sm:text-sm leading-relaxed whitespace-pre-line">
+                  {game.description}
+                </p>
+              </div>
+            )}
 
             {/* Step 2: Select Package */}
             <div className="space-y-2">
