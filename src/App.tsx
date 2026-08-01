@@ -229,11 +229,7 @@ export default function App() {
             localStorage.setItem('bny_games', JSON.stringify(loadedGames));
           } catch {}
         } else {
-          // If Firestore is empty, check if we have cached games
-          const cached = localStorage.getItem('bny_games');
-          if (cached) {
-            try { setGames(JSON.parse(cached)); } catch {}
-          }
+          setGames([]);
         }
 
         // Update selected game if currently viewing detail page
@@ -276,10 +272,8 @@ export default function App() {
           redirectLink: d.data().redirectLink || '',
           createdAt: d.data().createdAt || '',
         }));
-        if (list.length > 0) {
-          setBanners(list);
-          try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
-        }
+        setBanners(list);
+        try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
       },
       (err) => {
         console.warn('Firestore banners snapshot warning:', err?.message || err);
@@ -294,10 +288,8 @@ export default function App() {
           name: d.data().name || '',
           createdAt: d.data().createdAt || '',
         }));
-        if (list.length > 0) {
-          setCategories(list);
-          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
-        }
+        setCategories(list);
+        try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
       },
       (err) => {
         console.warn('Firestore categories snapshot warning:', err?.message || err);

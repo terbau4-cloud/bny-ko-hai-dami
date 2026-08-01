@@ -293,12 +293,17 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     setCategoryLoading(false);
 
     try {
-      await setDoc(doc(db, 'categories', catId), {
-        name: newCategory.name,
-        createdAt: newCategory.createdAt,
-      });
-    } catch (err) {
-      console.warn('Save category to Firestore warning (saved locally):', err);
+      await setDoc(
+        doc(db, 'categories', catId),
+        {
+          name: newCategory.name,
+          createdAt: newCategory.createdAt,
+        },
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.error('Save category to Firestore error:', err);
+      alert('Failed to save category: ' + (err?.message || 'Check network connection'));
     }
   };
 
@@ -906,16 +911,21 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
     try {
       if (editingGame) {
-        await updateDoc(doc(db, 'games', editingGame.id), {
-          title: gameTitleInput.trim(),
-          coverImg: gameLogoInput.trim(),
-          category: selectedCategory,
-        });
+        await setDoc(
+          doc(db, 'games', editingGame.id),
+          {
+            title: gameTitleInput.trim(),
+            coverImg: gameLogoInput.trim(),
+            category: selectedCategory,
+          },
+          { merge: true }
+        );
       } else if (savedGameObj) {
-        await setDoc(doc(db, 'games', savedGameObj.id), savedGameObj);
+        await setDoc(doc(db, 'games', savedGameObj.id), savedGameObj, { merge: true });
       }
-    } catch (err) {
-      console.warn('Error saving game to Firestore (saved locally):', err);
+    } catch (err: any) {
+      console.error('Error saving game to Firestore:', err);
+      alert('Failed to save game to database: ' + (err?.message || 'Check image size or network.'));
     }
   };
 
@@ -961,17 +971,22 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
 
     try {
-      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
-        requirements: updatedReqs,
-      });
+      await setDoc(
+        doc(db, 'games', selectedAdminGame.id),
+        {
+          requirements: updatedReqs,
+        },
+        { merge: true }
+      );
 
       setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
       setIsRequirementModalOpen(false);
       setEditingRequirement(null);
       setReqNameInput('');
       setReqTypeInput('number');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving requirement:', err);
+      alert('Failed to save requirement: ' + (err?.message || 'Unknown error'));
     }
   };
 
@@ -981,11 +996,15 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     const updatedReqs = currentReqs.filter((r) => r.id !== reqId);
 
     try {
-      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
-        requirements: updatedReqs,
-      });
+      await setDoc(
+        doc(db, 'games', selectedAdminGame.id),
+        {
+          requirements: updatedReqs,
+        },
+        { merge: true }
+      );
       setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting requirement:', err);
     }
   };
@@ -1015,17 +1034,22 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
 
     try {
-      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
-        products: updatedProds,
-      });
+      await setDoc(
+        doc(db, 'games', selectedAdminGame.id),
+        {
+          products: updatedProds,
+        },
+        { merge: true }
+      );
 
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
       setIsProductModalOpen(false);
       setEditingProduct(null);
       setProdNameInput('');
       setProdPriceInput('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving product:', err);
+      alert('Failed to save product: ' + (err?.message || 'Unknown error'));
     }
   };
 
@@ -1035,11 +1059,15 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     const updatedProds = currentProds.filter((p) => p.id !== prodId);
 
     try {
-      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
-        products: updatedProds,
-      });
+      await setDoc(
+        doc(db, 'games', selectedAdminGame.id),
+        {
+          products: updatedProds,
+        },
+        { merge: true }
+      );
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting product:', err);
     }
   };
@@ -1206,7 +1234,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressedDataUrl = await compressImage(file, 600, 0.85);
+      const compressedDataUrl = await compressImage(file, 450, 0.70);
       setGameLogoInput(compressedDataUrl);
     } catch (err) {
       console.error('Error compressing game logo image:', err);
@@ -1225,7 +1253,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressedDataUrl = await compressImage(file, 1200, 0.85);
+      const compressedDataUrl = await compressImage(file, 750, 0.65);
       setBannerImageUrlInput(compressedDataUrl);
     } catch (err) {
       console.error('Error compressing banner image:', err);
@@ -1267,13 +1295,18 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     setBannerLoading(false);
 
     try {
-      await setDoc(doc(db, 'banners', bannerId), {
-        imageUrl: newBanner.imageUrl,
-        redirectLink: newBanner.redirectLink,
-        createdAt: newBanner.createdAt,
-      });
-    } catch (err) {
-      console.warn('Error saving banner to Firestore (saved locally):', err);
+      await setDoc(
+        doc(db, 'banners', bannerId),
+        {
+          imageUrl: newBanner.imageUrl,
+          redirectLink: newBanner.redirectLink,
+          createdAt: newBanner.createdAt,
+        },
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.error('Error saving banner to Firestore:', err);
+      alert('Failed to save banner to database: ' + (err?.message || 'Check image size or network'));
     }
   };
 
