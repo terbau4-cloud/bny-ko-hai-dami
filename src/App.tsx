@@ -229,7 +229,7 @@ export default function App() {
             localStorage.setItem('bny_games', JSON.stringify(loadedGames));
           } catch {}
         } else {
-          setGames([]);
+          setGames(INITIAL_GAMES);
         }
 
         // Update selected game if currently viewing detail page

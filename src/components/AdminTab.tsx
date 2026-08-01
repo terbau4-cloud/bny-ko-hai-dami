@@ -77,7 +77,7 @@ interface PaymentQR {
 }
 
 // Canvas utility for compressing images before uploading to Firestore base64
-const compressImage = (file: File, maxWidth = 500, quality = 0.65): Promise<string> => {
+const compressImage = (file: File, maxWidth = 450, quality = 0.60): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -910,17 +910,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     setGameCategoryInput('');
 
     try {
-      if (editingGame) {
-        await setDoc(
-          doc(db, 'games', editingGame.id),
-          {
-            title: gameTitleInput.trim(),
-            coverImg: gameLogoInput.trim(),
-            category: selectedCategory,
-          },
-          { merge: true }
-        );
-      } else if (savedGameObj) {
+      if (savedGameObj) {
         await setDoc(doc(db, 'games', savedGameObj.id), savedGameObj, { merge: true });
       }
     } catch (err: any) {
