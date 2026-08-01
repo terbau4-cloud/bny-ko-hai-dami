@@ -1441,11 +1441,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   BNY <span className="text-indigo-600">ADMIN</span>
                 </h1>
                 <span className="bg-amber-100 text-amber-800 border border-amber-300 font-black text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Master
+                  {isMasterAdmin ? 'Master' : 'Staff'}
                 </span>
               </div>
               <p className="text-[11px] font-semibold text-slate-500">
-                Dashboard & Management Panel
+                {isMasterAdmin ? 'Dashboard & Management Panel' : 'Orders & Deposits Management'}
               </p>
             </div>
           </div>
@@ -1749,7 +1749,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500 space-y-1">
-                <p className="font-bold text-slate-700">Logged in Admin:</p>
+                <p className="font-bold text-slate-700">{isMasterAdmin ? 'Logged in Admin:' : 'Logged in Staff Member:'}</p>
                 <p className="font-mono text-indigo-600 truncate">{adminEmail}</p>
               </div>
             </motion.aside>
