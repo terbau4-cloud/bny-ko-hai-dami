@@ -672,18 +672,20 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     const now = new Date();
     const todayDayName = dayNames[now.getDay()];
 
-    // Group actual transactions by date/day if any exist in transactionsList
     const map: Record<string, { date: string; sales: number; orders: number }> = {};
     let hasOrders = false;
 
     transactionsList.forEach((tx) => {
       if (tx.type !== 'deposit') {
-        const d = tx.date || todayDayName;
+        let d = tx.date;
+        if (!d || d === 'Today' || d === 'Just Now' || d === 'Recent') {
+          d = todayDayName;
+        }
         if (!map[d]) {
           map[d] = { date: d, sales: 0, orders: 0 };
         }
         map[d].orders += 1;
-        if (tx.status === 'Approved' || tx.status === 'Completed') {
+        if (tx.status === 'Approved' || tx.status === 'Completed' || tx.status === 'Pending') {
           map[d].sales += Number(tx.amount || 0);
         }
         hasOrders = true;
@@ -696,13 +698,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       return list;
     }
 
-    // Default state: Show today's current day with 0 sales & 0 orders
     return [
       { date: todayDayName, sales: 0, orders: 0 }
     ];
   };
 
   const getPieData = () => {
+    const gameMap: Record<string, number> = {};
+    let totalSales = 0;
+    let hasRealTx = false;
+
+    transactionsList.forEach((tx) => {
+      if (tx.type !== 'deposit') {
+        const title = tx.gameTitle || tx.productName || tx.description || 'Topup Order';
+        const isEligible = tx.status === 'Approved' || tx.status === 'Completed' || tx.status === 'Pending';
+        const amt = isEligible ? Number(tx.amount || 0) : 0;
+        gameMap[title] = (gameMap[title] || 0) + amt;
+        totalSales += amt;
+        hasRealTx = true;
+      }
+    });
+
     const storeGames = gamesList.map((g) => g.title);
     const presetGames = [
       'Free Fire Topup',
@@ -714,13 +730,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       'Netflix Subscription',
       'EFootball Coins',
     ];
+    const allTitles = Array.from(new Set([...Object.keys(gameMap), ...storeGames, ...presetGames])).filter(Boolean);
 
-    const allTitles = Array.from(new Set([...storeGames, ...presetGames])).filter(Boolean);
+    if (hasRealTx && totalSales > 0) {
+      return allTitles.map((title) => {
+        const val = gameMap[title] || 0;
+        const pct = totalSales > 0 ? (val / totalSales) * 100 : 0;
+        return {
+          name: title,
+          pieValue: val,
+          realValue: val,
+          percent: pct,
+          hasRealData: true,
+        };
+      });
+    }
 
     return allTitles.map((title) => ({
       name: title,
-      pieValue: 1, // equal slice size for every available game
+      pieValue: 1,
       realValue: 0,
+      percent: 0,
       hasRealData: false,
     }));
   };
@@ -743,11 +773,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     '#7c3aed', // Violet
   ];
 
-  const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius }: any) => {
+  const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, payload }: any) => {
     const RADIAN = Math.PI / 180;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
     const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    const displayPct = payload?.hasRealData ? `${(percent * 100).toFixed(1)}%` : '0%';
 
     return (
       <text
@@ -758,7 +790,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         dominantBaseline="central"
         className="text-[10px] sm:text-xs font-black drop-shadow-sm pointer-events-none"
       >
-        0%
+        {displayPct}
       </text>
     );
   };
@@ -1897,7 +1929,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={getPieData()}
+                        data={
+                          getPieData().some((d) => d.hasRealData)
+                            ? getPieData().filter((d) => d.pieValue > 0)
+                            : getPieData()
+                        }
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -1907,7 +1943,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                         dataKey="pieValue"
                         nameKey="name"
                       >
-                        {getPieData().map((entry, index) => (
+                        {(getPieData().some((d) => d.hasRealData)
+                          ? getPieData().filter((d) => d.pieValue > 0)
+                          : getPieData()
+                        ).map((entry, index) => (
                           <Cell
                             key={`cell-${index}`}
                             fill={PIE_COLORS[index % PIE_COLORS.length]}
@@ -1918,7 +1957,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                       </Pie>
                       <Tooltip
                         contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', borderColor: '#e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                        formatter={() => ['RS 0', 'Sales Volume']}
+                        formatter={(val: any, name: any, props: any) => [
+                          `RS ${props.payload?.realValue ?? 0}`,
+                          'Sales Volume',
+                        ]}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -1927,6 +1969,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 {/* Legend Right List */}
                 <div className="w-full md:w-2/5 max-h-72 overflow-y-auto space-y-2.5 pr-2 custom-scrollbar">
                   {getPieData().map((entry, idx) => {
+                    const displayPct = entry.hasRealData ? `${entry.percent.toFixed(1)}%` : '0%';
+                    const displayVal = entry.hasRealData ? entry.realValue : 0;
                     return (
                       <div
                         key={idx}
@@ -1937,16 +1981,16 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                             className="w-4 h-4 rounded-sm shrink-0 shadow-2xs"
                             style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
                           />
-                          <span className="text-xs font-bold text-slate-800 truncate">
+                          <span className="text-xs font-bold text-slate-800 truncate" title={entry.name}>
                             {entry.name}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg">
-                            0%
+                            {displayPct}
                           </span>
                           <span className="text-[11px] font-mono font-semibold text-slate-500">
-                            RS 0
+                            RS {displayVal}
                           </span>
                         </div>
                       </div>
