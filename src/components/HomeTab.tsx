@@ -7,9 +7,10 @@ interface Props {
   onSelectGame: (game: Game) => void;
   banners?: AppBanner[];
   categories?: Category[];
+  isLoading?: boolean;
 }
 
-export const HomeTab: React.FC<Props> = ({ games = [], onSelectGame, banners = [], categories = [] }) => {
+export const HomeTab: React.FC<Props> = ({ games = [], onSelectGame, banners = [], categories = [], isLoading = false }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [currentBannerIndex, setCurrentBannerIndex] = useState<number>(0);
 
@@ -179,7 +180,24 @@ export const HomeTab: React.FC<Props> = ({ games = [], onSelectGame, banners = [
           </span>
         </h3>
 
-        {filteredGames.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              <div
+                key={n}
+                className="bg-slate-900 rounded-3xl overflow-hidden shadow-md border-2 border-slate-800 animate-pulse flex flex-col justify-between"
+              >
+                <div className="aspect-square bg-slate-800/80 w-full flex items-center justify-center">
+                  <Gamepad2 size={32} className="text-slate-700/50" />
+                </div>
+                <div className="p-4 bg-slate-900 space-y-2">
+                  <div className="h-4 bg-slate-800 rounded-lg w-5/6" />
+                  <div className="h-3 bg-slate-800/60 rounded-lg w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredGames.length === 0 ? (
           games.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3 shadow-2xs">
               <Gamepad2 size={40} className="text-slate-300 mx-auto" />

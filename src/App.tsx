@@ -36,6 +36,14 @@ export default function App() {
       return [];
     }
   });
+  const [isGamesLoading, setIsGamesLoading] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('bny_games');
+      return !cached || JSON.parse(cached).length === 0;
+    } catch {
+      return true;
+    }
+  });
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -234,9 +242,12 @@ export default function App() {
           const updated = loadedGames.find((g) => g.id === prev.id);
           return updated || prev;
         });
+
+        setIsGamesLoading(false);
       },
       (err) => {
         console.warn('App live games listener warning:', err?.message || err);
+        setIsGamesLoading(false);
       }
     );
 
@@ -527,6 +538,7 @@ export default function App() {
             games={games}
             banners={banners}
             categories={categories}
+            isLoading={isGamesLoading}
             onSelectGame={(game) => setSelectedGame(game)}
           />
         )}
