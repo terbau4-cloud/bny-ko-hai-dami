@@ -123,9 +123,27 @@ export const AuthModal: React.FC<Props> = ({ onSuccess }) => {
         }
       }
     } catch (err: any) {
-      console.error('Firebase Auth Error:', err);
+      console.warn('Firebase Auth Warning:', err?.message || err);
       let msg = 'Authentication failed. Please try again.';
-      if (err.code === 'auth/email-already-in-use') {
+      if (err?.message?.includes('Quota limit exceeded') || err?.code?.includes('quota')) {
+        msg = 'Database daily quota limit reached. Creating guest session...';
+        const fallbackProfile: UserProfile = {
+          uid: `user_offline_${Date.now()}`,
+          name: fullName.trim() || email.split('@')[0] || 'Gamer User',
+          email: email.trim(),
+          whatsapp: whatsapp.trim(),
+          avatar: '👤',
+          level: 1,
+          coins: 100,
+          walletBalance: 0,
+          totalSpent: 0,
+          totalGamesPlayed: 0,
+          soundEnabled: true,
+          themeColor: 'purple',
+        };
+        onSuccess(fallbackProfile);
+        return;
+      } else if (err.code === 'auth/email-already-in-use') {
         msg = 'This email is already registered with BNY SHOP. Please sign in instead.';
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
         msg = 'Invalid email or password. Please check your credentials.';

@@ -130,7 +130,14 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
-  const [gamesList, setGamesList] = useState<Game[]>([]);
+  const [gamesList, setGamesList] = useState<Game[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_games');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
@@ -138,16 +145,37 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [copyToast, setCopyToast] = useState<string>('');
 
   // Categories state & modal
-  const [categoriesList, setCategoriesList] = useState<Category[]>([]);
+  const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_categories');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryNameInput, setCategoryNameInput] = useState<string>('');
   const [categoryLoading, setCategoryLoading] = useState<boolean>(false);
 
   // Banners, Team Members & Payment QRs state
-  const [bannersList, setBannersList] = useState<AppBanner[]>([]);
+  const [bannersList, setBannersList] = useState<AppBanner[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_banners');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>([]);
-  const [paymentQRsList, setPaymentQRsList] = useState<PaymentQR[]>([]);
+  const [paymentQRsList, setPaymentQRsList] = useState<PaymentQR[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_payment_qrs');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Add/Edit Banner Modal state
   const [isBannerModalOpen, setIsBannerModalOpen] = useState<boolean>(false);
@@ -244,30 +272,52 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const handleSaveCategory = async () => {
     if (!categoryNameInput.trim()) return;
     setCategoryLoading(true);
+    const catId = editingCategory ? editingCategory.id : `cat_${Date.now()}`;
+    const newCategory: Category = {
+      id: catId,
+      name: categoryNameInput.trim(),
+      createdAt: editingCategory?.createdAt || new Date().toISOString(),
+    };
+
+    let updatedList: Category[] = [];
+    if (editingCategory) {
+      updatedList = categoriesList.map((c) => (c.id === catId ? newCategory : c));
+    } else {
+      updatedList = [newCategory, ...categoriesList];
+    }
+
+    setCategoriesList(updatedList);
     try {
-      const catId = editingCategory ? editingCategory.id : `cat_${Date.now()}`;
+      localStorage.setItem('bny_categories', JSON.stringify(updatedList));
+    } catch {}
+
+    setIsCategoryModalOpen(false);
+    setEditingCategory(null);
+    setCategoryNameInput('');
+    setCategoryLoading(false);
+
+    try {
       await setDoc(doc(db, 'categories', catId), {
-        name: categoryNameInput.trim(),
-        createdAt: editingCategory?.createdAt || new Date().toISOString(),
+        name: newCategory.name,
+        createdAt: newCategory.createdAt,
       });
-      setIsCategoryModalOpen(false);
-      setEditingCategory(null);
-      setCategoryNameInput('');
     } catch (err) {
-      console.error('Save category error:', err);
-      alert('Failed to save category');
-    } finally {
-      setCategoryLoading(false);
+      console.warn('Save category to Firestore warning (saved locally):', err);
     }
   };
 
   const handleDeleteCategory = async (catId: string) => {
     if (!window.confirm('Are you sure you want to delete this category?')) return;
+    const updatedList = categoriesList.filter((c) => c.id !== catId);
+    setCategoriesList(updatedList);
+    try {
+      localStorage.setItem('bny_categories', JSON.stringify(updatedList));
+    } catch {}
+
     try {
       await deleteDoc(doc(db, 'categories', catId));
     } catch (err) {
-      console.error('Delete category error:', err);
-      alert('Failed to delete category');
+      console.warn('Delete category from Firestore warning:', err);
     }
   };
 
@@ -335,7 +385,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         });
       }
 
-      const allGames = gamesList.length > 0 ? gamesList : INITIAL_GAMES;
+      const allGames = gamesList;
       const matchedGame = allGames.find(
         (g) => (tx.gameTitle && g.title.toLowerCase().includes(tx.gameTitle.toLowerCase())) ||
                (tx.gameTitle && tx.gameTitle.toLowerCase().includes(g.title.toLowerCase())) ||
@@ -401,117 +451,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [bulkListInput, setBulkListInput] = useState<string>('');
   const [bulkImportLoading, setBulkImportLoading] = useState<boolean>(false);
 
-  // Fetch Firestore users, transactions & games
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      // Fetch Users
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const fetchedUsers: UserProfile[] = usersSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          uid: d.id,
-          name: data.fullName || data.name || 'Gamer User',
-          email: data.email || '',
-          whatsapp: data.whatsapp || '',
-          avatar: '👤',
-          level: 1,
-          coins: 100,
-          walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
-          totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
-          totalGamesPlayed: 0,
-          soundEnabled: true,
-          themeColor: 'purple',
-          blocked: Boolean(data.blocked),
-        };
-      });
-      setUsersList(fetchedUsers);
-
-      // Fetch Transactions
-      const txSnap = await getDocs(collection(db, 'transactions'));
-      const fetchedTxs: Transaction[] = txSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          orderId: data.orderId || d.id.substring(0, 10),
-          type: data.type || 'purchase',
-          amount: data.amount || 0,
-          date: data.date || 'Today',
-          time: data.time || '',
-          status: data.status || 'Pending',
-          description: data.description || '',
-          gameId: data.gameId,
-          gameTitle: data.gameTitle,
-          gameIcon: data.gameIcon,
-          productName: data.productName,
-          productPrice: data.productPrice,
-          quantity: data.quantity,
-          playerId: data.playerId,
-          userEmail: data.userEmail || '',
-          requirementsData: data.requirementsData || [],
-          screenshotUrl: data.screenshotUrl,
-        };
-      });
-      setTransactionsList(fetchedTxs);
-
-      // Fetch Games
-      const gamesSnap = await getDocs(collection(db, 'games'));
-      if (!gamesSnap.empty) {
-        const fetchedGames: Game[] = gamesSnap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            title: data.title || 'Untitled Game',
-            publisher: data.publisher || '',
-            category: data.category || 'action',
-            rating: data.rating || 4.8,
-            icon: data.icon || '🎮',
-            coverImg: data.coverImg || '',
-            color: data.color || 'from-indigo-600 to-purple-600',
-            bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
-            plays: data.plays || 100,
-            description: data.description || '',
-            gameType: data.gameType || 'balloon',
-            products: data.products || [],
-            requirements: data.requirements || [],
-          };
-        });
-        setGamesList(fetchedGames);
-      } else {
-        // Seed Firestore with INITIAL_GAMES if empty
-        for (const g of INITIAL_GAMES) {
-          await setDoc(doc(db, 'games', g.id), {
-            title: g.title,
-            publisher: g.publisher || '',
-            category: g.category || 'action',
-            rating: g.rating || 4.8,
-            icon: g.icon || '🎮',
-            coverImg: g.coverImg || '',
-            color: g.color || 'from-indigo-600 to-purple-600',
-            bgGradient: g.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
-            plays: g.plays || 100,
-            description: g.description || '',
-            gameType: g.gameType || 'balloon',
-            products: g.products || [],
-            requirements: g.requirements || [],
-          });
-        }
-        setGamesList(INITIAL_GAMES);
-      }
-    } catch (err) {
-      console.error('Error fetching admin data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Single consolidated Firestore listener effect
   useEffect(() => {
-    fetchData();
+    setLoading(true);
 
     // Listen for live updates on users
-    const qUsers = query(collection(db, 'users'));
     const unsubscribeUsers = onSnapshot(
-      qUsers,
+      query(collection(db, 'users')),
       (snapshot) => {
         const fetchedUsers: UserProfile[] = snapshot.docs.map((d) => {
           const data = d.data();
@@ -532,14 +478,17 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           };
         });
         setUsersList(fetchedUsers);
+        setLoading(false);
       },
-      (err) => console.error('Admin live users error:', err)
+      (err) => {
+        console.warn('Admin live users listener warning:', err?.message || err);
+        setLoading(false);
+      }
     );
 
     // Listen for live updates on transactions
-    const qTx = query(collection(db, 'transactions'));
     const unsubscribeTx = onSnapshot(
-      qTx,
+      query(collection(db, 'transactions')),
       (snapshot) => {
         const updatedTxs: Transaction[] = snapshot.docs.map((d) => {
           const data = d.data();
@@ -565,52 +514,54 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           };
         });
         setTransactionsList(updatedTxs);
+        setLoading(false);
       },
-      (err) => console.error('Admin live tx error:', err)
+      (err) => {
+        console.warn('Admin live tx listener warning:', err?.message || err);
+        setLoading(false);
+      }
     );
 
     // Listen for live updates on games
-    const qGames = query(collection(db, 'games'));
     const unsubscribeGames = onSnapshot(
-      qGames,
+      query(collection(db, 'games')),
       (snapshot) => {
-        if (!snapshot.empty) {
-          const updatedGames: Game[] = snapshot.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              title: data.title || 'Untitled Game',
-              publisher: data.publisher || '',
-              category: data.category || 'action',
-              rating: data.rating || 4.8,
-              icon: data.icon || '🎮',
-              coverImg: data.coverImg || '',
-              color: data.color || 'from-indigo-600 to-purple-600',
-              bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
-              plays: data.plays || 100,
-              description: data.description || '',
-              gameType: data.gameType || 'balloon',
-              products: data.products || [],
-              requirements: data.requirements || [],
-            };
-          });
-          setGamesList(updatedGames);
-
-          // Update selectedAdminGame if it's currently selected
-          setSelectedAdminGame((prev) => {
-            if (!prev) return null;
-            const updated = updatedGames.find((g) => g.id === prev.id);
-            return updated || null;
-          });
-        }
+        const updatedGames: Game[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            title: data.title || 'Untitled Game',
+            publisher: data.publisher || '',
+            category: data.category || 'action',
+            rating: data.rating || 4.8,
+            icon: data.icon || '🎮',
+            coverImg: data.coverImg || '',
+            color: data.color || 'from-indigo-600 to-purple-600',
+            bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
+            plays: data.plays || 100,
+            description: data.description || '',
+            gameType: data.gameType || 'balloon',
+            products: data.products || [],
+            requirements: data.requirements || [],
+          };
+        });
+        setGamesList(updatedGames);
+        setSelectedAdminGame((prev) => {
+          if (!prev) return null;
+          const updated = updatedGames.find((g) => g.id === prev.id);
+          return updated || null;
+        });
+        setLoading(false);
       },
-      (err) => console.error('Admin live games error:', err)
+      (err) => {
+        console.warn('Admin live games listener warning:', err?.message || err);
+        setLoading(false);
+      }
     );
 
     // Listen for live updates on payment_qrs
-    const qPaymentQRs = query(collection(db, 'payment_qrs'));
     const unsubscribePaymentQRs = onSnapshot(
-      qPaymentQRs,
+      query(collection(db, 'payment_qrs')),
       (snapshot) => {
         const qrs: PaymentQR[] = snapshot.docs.map((d) => {
           const data = d.data();
@@ -621,27 +572,76 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             createdAt: data.createdAt,
           };
         });
-        setPaymentQRsList(qrs);
+        if (qrs.length > 0) {
+          setPaymentQRsList(qrs);
+          try { localStorage.setItem('bny_payment_qrs', JSON.stringify(qrs)); } catch {}
+        }
       },
-      (err) => console.error('Admin live payment_qrs error:', err)
+      (err) => {
+        console.warn('Admin live payment_qrs warning:', err?.message || 'Quota or network error');
+        setLoading(false);
+      }
     );
 
     // Listen for live updates on banners
-    const qBanners = query(collection(db, 'banners'));
     const unsubscribeBanners = onSnapshot(
-      qBanners,
+      query(collection(db, 'banners')),
       (snapshot) => {
         const bannersData: AppBanner[] = snapshot.docs.map((d) => {
           const data = d.data();
           return {
             id: d.id,
             imageUrl: data.imageUrl || '',
-            redirectUrl: data.redirectUrl || '',
+            redirectLink: data.redirectLink || data.redirectUrl || '',
+            createdAt: data.createdAt || '',
           };
         });
-        setBannersList(bannersData);
+        if (bannersData.length > 0) {
+          setBannersList(bannersData);
+          try { localStorage.setItem('bny_banners', JSON.stringify(bannersData)); } catch {}
+        }
       },
-      (err) => console.error('Admin live banners error:', err)
+      (err) => {
+        console.warn('Admin live banners warning:', err?.message || 'Quota or network error');
+        setLoading(false);
+      }
+    );
+
+    // Listen for live updates on team_members
+    const unsubscribeMembers = onSnapshot(
+      query(collection(db, 'team_members')),
+      (snapshot) => {
+        const list: TeamMember[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          email: d.data().email || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        setTeamMembersList(list);
+      },
+      (err) => {
+        console.warn('Admin live team_members warning:', err?.message || 'Quota or network error');
+        setLoading(false);
+      }
+    );
+
+    // Listen for live updates on categories
+    const unsubscribeCategories = onSnapshot(
+      query(collection(db, 'categories')),
+      (snapshot) => {
+        const list: Category[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          name: d.data().name || '',
+          createdAt: d.data().createdAt || '',
+        }));
+        if (list.length > 0) {
+          setCategoriesList(list);
+          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        }
+      },
+      (err) => {
+        console.warn('Admin live categories warning:', err?.message || 'Quota or network error');
+        setLoading(false);
+      }
     );
 
     return () => {
@@ -650,6 +650,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       unsubscribeGames();
       unsubscribePaymentQRs();
       unsubscribeBanners();
+      unsubscribeMembers();
+      unsubscribeCategories();
     };
   }, []);
 
@@ -938,56 +940,86 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const handleSaveGame = async () => {
     if (!gameTitleInput.trim()) return;
 
-    try {
-      const selectedCategory = gameCategoryInput.trim() || categoriesList[0]?.name || 'Popular Games';
-      if (editingGame) {
-        // Edit existing game
-        const updatedDoc: Partial<Game> = {
-          title: gameTitleInput.trim(),
-          coverImg: gameLogoInput.trim(),
-          category: selectedCategory,
-        };
-        await updateDoc(doc(db, 'games', editingGame.id), updatedDoc);
-      } else {
-        // Add new game
-        const newId = `game_${Date.now()}`;
-        const newGameData: Game = {
-          id: newId,
-          title: gameTitleInput.trim(),
-          coverImg: gameLogoInput.trim(),
-          icon: '🎮',
-          category: selectedCategory,
-          rating: 4.8,
-          color: 'from-indigo-600 to-purple-600',
-          bgGradient: 'bg-gradient-to-br from-indigo-600 to-purple-700',
-          plays: 100,
-          description: 'Top up game credits instantly on BNY SHOP.',
-          gameType: 'balloon',
-          products: [],
-          requirements: []
-        };
-        await setDoc(doc(db, 'games', newId), newGameData);
-      }
+    const selectedCategory = gameCategoryInput.trim() || categoriesList[0]?.name || 'Popular Games';
+    let nextGamesList: Game[] = [];
+    let savedGameObj: Game | null = null;
 
-      setIsGameModalOpen(false);
-      setEditingGame(null);
-      setGameTitleInput('');
-      setGameLogoInput('');
-      setGameCategoryInput('');
+    if (editingGame) {
+      nextGamesList = gamesList.map((g) => {
+        if (g.id === editingGame.id) {
+          const updated = {
+            ...g,
+            title: gameTitleInput.trim(),
+            coverImg: gameLogoInput.trim(),
+            category: selectedCategory,
+          };
+          savedGameObj = updated;
+          return updated;
+        }
+        return g;
+      });
+    } else {
+      const newId = `game_${Date.now()}`;
+      savedGameObj = {
+        id: newId,
+        title: gameTitleInput.trim(),
+        coverImg: gameLogoInput.trim(),
+        icon: '🎮',
+        category: selectedCategory,
+        rating: 4.8,
+        color: 'from-indigo-600 to-purple-600',
+        bgGradient: 'bg-gradient-to-br from-indigo-600 to-purple-700',
+        plays: 100,
+        description: 'Top up game credits instantly on BNY SHOP.',
+        gameType: 'balloon',
+        products: [],
+        requirements: [],
+      };
+      nextGamesList = [savedGameObj, ...gamesList];
+    }
+
+    setGamesList(nextGamesList);
+    try {
+      localStorage.setItem('bny_games', JSON.stringify(nextGamesList));
+    } catch {}
+
+    setIsGameModalOpen(false);
+    setEditingGame(null);
+    setGameTitleInput('');
+    setGameLogoInput('');
+    setGameCategoryInput('');
+
+    try {
+      if (editingGame) {
+        await updateDoc(doc(db, 'games', editingGame.id), {
+          title: gameTitleInput.trim(),
+          coverImg: gameLogoInput.trim(),
+          category: selectedCategory,
+        });
+      } else if (savedGameObj) {
+        await setDoc(doc(db, 'games', savedGameObj.id), savedGameObj);
+      }
     } catch (err) {
-      console.error('Error saving game:', err);
+      console.warn('Error saving game to Firestore (saved locally):', err);
     }
   };
 
   const handleDeleteGame = async (gameId: string) => {
     if (!confirm('Are you sure you want to delete this game?')) return;
+    const nextGamesList = gamesList.filter((g) => g.id !== gameId);
+    setGamesList(nextGamesList);
+    try {
+      localStorage.setItem('bny_games', JSON.stringify(nextGamesList));
+    } catch {}
+
+    if (selectedAdminGame?.id === gameId) {
+      setSelectedAdminGame(null);
+    }
+
     try {
       await deleteDoc(doc(db, 'games', gameId));
-      if (selectedAdminGame?.id === gameId) {
-        setSelectedAdminGame(null);
-      }
     } catch (err) {
-      console.error('Error deleting game:', err);
+      console.warn('Error deleting game from Firestore:', err);
     }
   };
 
@@ -1295,38 +1327,51 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const handleSaveBanner = async () => {
     if (!bannerImageUrlInput.trim()) return;
     setBannerLoading(true);
+    const bannerId = editingBanner ? editingBanner.id : `banner_${Date.now()}`;
+    const newBanner: AppBanner = {
+      id: bannerId,
+      imageUrl: bannerImageUrlInput.trim(),
+      redirectLink: bannerRedirectInput.trim(),
+      createdAt: editingBanner?.createdAt || new Date().toISOString(),
+    };
+
+    let updatedBanners: AppBanner[] = [];
+    if (editingBanner) {
+      updatedBanners = bannersList.map((b) => (b.id === bannerId ? newBanner : b));
+    } else {
+      updatedBanners = [newBanner, ...bannersList];
+    }
+
+    setBannersList(updatedBanners);
+    try { localStorage.setItem('bny_banners', JSON.stringify(updatedBanners)); } catch {}
+
+    setIsBannerModalOpen(false);
+    setEditingBanner(null);
+    setBannerImageUrlInput('');
+    setBannerRedirectInput('');
+    setBannerLoading(false);
+
     try {
-      if (editingBanner) {
-        await updateDoc(doc(db, 'banners', editingBanner.id), {
-          imageUrl: bannerImageUrlInput.trim(),
-          redirectLink: bannerRedirectInput.trim(),
-        });
-      } else {
-        const bannerId = `banner_${Date.now()}`;
-        await setDoc(doc(db, 'banners', bannerId), {
-          imageUrl: bannerImageUrlInput.trim(),
-          redirectLink: bannerRedirectInput.trim(),
-          createdAt: new Date().toISOString(),
-        });
-      }
-      setIsBannerModalOpen(false);
-      setEditingBanner(null);
-      setBannerImageUrlInput('');
-      setBannerRedirectInput('');
+      await setDoc(doc(db, 'banners', bannerId), {
+        imageUrl: newBanner.imageUrl,
+        redirectLink: newBanner.redirectLink,
+        createdAt: newBanner.createdAt,
+      });
     } catch (err) {
-      console.error('Error saving banner:', err);
-      alert('Failed to save banner. Please try again.');
-    } finally {
-      setBannerLoading(false);
+      console.warn('Error saving banner to Firestore (saved locally):', err);
     }
   };
 
   const handleDeleteBanner = async (bannerId: string) => {
     if (!confirm('Are you sure you want to delete this banner?')) return;
+    const updatedBanners = bannersList.filter((b) => b.id !== bannerId);
+    setBannersList(updatedBanners);
+    try { localStorage.setItem('bny_banners', JSON.stringify(updatedBanners)); } catch {}
+
     try {
       await deleteDoc(doc(db, 'banners', bannerId));
     } catch (err) {
-      console.error('Error deleting banner:', err);
+      console.warn('Error deleting banner from Firestore:', err);
     }
   };
 
@@ -1355,53 +1400,64 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       return;
     }
     setPaymentLoading(true);
-    try {
-      const title = paymentTitleInput.trim() || 'Payment QR Code';
-      let finalImg = paymentImgInput.trim();
+    const title = paymentTitleInput.trim() || 'Payment QR Code';
+    let finalImg = paymentImgInput.trim();
 
-      // Ensure data URL is not exceeding Firestore document limits
-      if (finalImg.length > 900000) {
-        alert('The uploaded image is too large. Please select a smaller QR code image.');
-        setPaymentLoading(false);
-        return;
-      }
-
-      if (editingPaymentQR) {
-        await updateDoc(doc(db, 'payment_qrs', editingPaymentQR.id), {
-          title,
-          imageUrl: finalImg,
-        });
-      } else {
-        const qrId = `qr_${Date.now()}`;
-        await setDoc(doc(db, 'payment_qrs', qrId), {
-          title,
-          imageUrl: finalImg,
-          createdAt: new Date().toISOString(),
-        });
-      }
-      setIsPaymentModalOpen(false);
-      setEditingPaymentQR(null);
-      setPaymentTitleInput('');
-      setPaymentImgInput('');
-      setCopyToast('Payment QR saved successfully!');
-      setTimeout(() => setCopyToast(''), 2500);
-    } catch (err: any) {
-      console.error('Error saving payment QR:', err);
-      alert(`Failed to save Payment QR: ${err?.message || 'Please check image size and try again.'}`);
-    } finally {
+    if (finalImg.length > 900000) {
+      alert('The uploaded image is too large. Please select a smaller QR code image.');
       setPaymentLoading(false);
+      return;
+    }
+
+    const qrId = editingPaymentQR ? editingPaymentQR.id : `qr_${Date.now()}`;
+    const newQR: PaymentQR = {
+      id: qrId,
+      title,
+      imageUrl: finalImg,
+      createdAt: editingPaymentQR?.createdAt || new Date().toISOString(),
+    };
+
+    let updatedQRs: PaymentQR[] = [];
+    if (editingPaymentQR) {
+      updatedQRs = paymentQRsList.map((q) => (q.id === qrId ? newQR : q));
+    } else {
+      updatedQRs = [newQR, ...paymentQRsList];
+    }
+
+    setPaymentQRsList(updatedQRs);
+    try { localStorage.setItem('bny_payment_qrs', JSON.stringify(updatedQRs)); } catch {}
+
+    setIsPaymentModalOpen(false);
+    setEditingPaymentQR(null);
+    setPaymentTitleInput('');
+    setPaymentImgInput('');
+    setPaymentLoading(false);
+    setCopyToast('Payment QR saved successfully!');
+    setTimeout(() => setCopyToast(''), 2500);
+
+    try {
+      await setDoc(doc(db, 'payment_qrs', qrId), {
+        title: newQR.title,
+        imageUrl: newQR.imageUrl,
+        createdAt: newQR.createdAt,
+      });
+    } catch (err: any) {
+      console.warn('Error saving payment QR to Firestore (saved locally):', err);
     }
   };
 
   const handleDeletePaymentQR = async (qrId: string) => {
     if (!confirm('Are you sure you want to delete this Payment QR code?')) return;
+    const updatedQRs = paymentQRsList.filter((q) => q.id !== qrId);
+    setPaymentQRsList(updatedQRs);
+    try { localStorage.setItem('bny_payment_qrs', JSON.stringify(updatedQRs)); } catch {}
+    setCopyToast('Payment QR deleted!');
+    setTimeout(() => setCopyToast(''), 2000);
+
     try {
       await deleteDoc(doc(db, 'payment_qrs', qrId));
-      setCopyToast('Payment QR deleted!');
-      setTimeout(() => setCopyToast(''), 2000);
     } catch (err) {
-      console.error('Error deleting payment QR:', err);
-      alert('Failed to delete Payment QR.');
+      console.warn('Error deleting payment QR from Firestore:', err);
     }
   };
 
@@ -1480,7 +1536,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           </div>
 
           <button
-            onClick={fetchData}
+            onClick={() => {
+              setLoading(true);
+              setTimeout(() => setLoading(false), 500);
+            }}
             id="admin-refresh-btn"
             className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
           >

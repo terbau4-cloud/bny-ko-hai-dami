@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TabType, Game, Transaction, UserProfile, TopupProduct, AppBanner, Category } from './types';
-import { INITIAL_GAMES, INITIAL_TRANSACTIONS, INITIAL_PROFILE } from './data/initialData';
+import { INITIAL_GAMES, INITIAL_TRANSACTIONS, INITIAL_PROFILE, INITIAL_CATEGORIES, INITIAL_BANNERS } from './data/initialData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { HomeTab } from './components/HomeTab';
@@ -28,128 +28,159 @@ import { auth, db } from './lib/firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [games, setGames] = useState<Game[]>([]);
+  const [games, setGames] = useState<Game[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_games');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
   // Dynamic Banners, Categories and Team Members
   const [teamMembers, setTeamMembers] = useState<string[]>([]);
-  const [banners, setBanners] = useState<AppBanner[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [banners, setBanners] = useState<AppBanner[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_banners');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_categories');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Auth States
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
 
-  // Safety fallback to end checking state rapidly
+  // Minimum initial loading screen time when app opens
   useEffect(() => {
     const timer = setTimeout(() => {
       setAuthChecking(false);
-    }, 300);
+    }, 1200);
 
     return () => clearTimeout(timer);
   }, []);
+
 
   // Listen for Firebase Auth state changes & real-time user profile
   useEffect(() => {
     let unsubscribeTx: (() => void) | null = null;
     let unsubscribeUserDoc: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      if (unsubscribeTx) {
-        unsubscribeTx();
-        unsubscribeTx = null;
-      }
-      if (unsubscribeUserDoc) {
-        unsubscribeUserDoc();
-        unsubscribeUserDoc = null;
-      }
+    const unsubscribeAuth = onAuthStateChanged(
+      auth,
+      async (user) => {
+        if (unsubscribeTx) {
+          unsubscribeTx();
+          unsubscribeTx = null;
+        }
+        if (unsubscribeUserDoc) {
+          unsubscribeUserDoc();
+          unsubscribeUserDoc = null;
+        }
 
-      setAuthUser(user);
-      setAuthChecking(false);
+        setAuthUser(user);
+        setAuthChecking(false);
 
-      if (user) {
-        // Subscribe to user profile document in Firestore in real-time
-        const userDocRef = doc(db, 'users', user.uid);
-        unsubscribeUserDoc = onSnapshot(
-          userDocRef,
-          (userSnap) => {
-            if (!userSnap.exists() || userSnap.data()?.isDeleted === true) {
-              // Admin deleted this user profile! Logout immediately
-              signOut(auth);
-              setAuthUser(null);
-              setProfile(INITIAL_PROFILE);
-              alert('Your account has been deleted by Admin. You have been logged out.');
-              return;
-            }
+        if (user) {
+          // Subscribe to user profile document in Firestore in real-time
+          const userDocRef = doc(db, 'users', user.uid);
+          unsubscribeUserDoc = onSnapshot(
+            userDocRef,
+            (userSnap) => {
+              if (!userSnap.exists() || userSnap.data()?.isDeleted === true) {
+                signOut(auth).catch(() => {});
+                setAuthUser(null);
+                setProfile(INITIAL_PROFILE);
+                alert('Your account has been deleted by Admin. You have been logged out.');
+                return;
+              }
 
-            const data = userSnap.data();
-            setProfile({
-              uid: user.uid,
-              name: data.fullName || data.name || user.displayName || 'BNY Gamer',
-              email: data.email || user.email || '',
-              whatsapp: data.whatsapp || '',
-              avatar: '👤',
-              level: 1,
-              coins: 100,
-              walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
-              totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
-              totalGamesPlayed: 0,
-              soundEnabled: true,
-              themeColor: 'purple',
-              blocked: !!data.blocked,
-            });
-          },
-          (err) => {
-            console.error('Error listening to user doc snapshot:', err);
-          }
-        );
-
-        // Listen to Firestore transactions for this user
-        const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        unsubscribeTx = onSnapshot(
-          q,
-          (snapshot) => {
-            if (!snapshot.empty) {
-              const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                return {
-                  id: docSnap.id,
-                  orderId: data.orderId,
-                  type: data.type || 'purchase',
-                  amount: data.amount || 0,
-                  date: data.date || 'Today',
-                  time: data.time || '',
-                  status: data.status || 'Pending',
-                  description: data.description || '',
-                  gameTitle: data.gameTitle,
-                  gameIcon: data.gameIcon,
-                  gameCoverImg: data.gameCoverImg,
-                  productName: data.productName,
-                  productPrice: data.productPrice,
-                  quantity: data.quantity,
-                  playerId: data.playerId,
-                  userEmail: data.userEmail || '',
-                  requirementsData: data.requirementsData || [],
-                  screenshotUrl: data.screenshotUrl,
-                };
+              const data = userSnap.data();
+              setProfile({
+                uid: user.uid,
+                name: data.fullName || data.name || user.displayName || 'BNY Gamer',
+                email: data.email || user.email || '',
+                whatsapp: data.whatsapp || '',
+                avatar: '👤',
+                level: 1,
+                coins: 100,
+                walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
+                totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
+                totalGamesPlayed: 0,
+                soundEnabled: true,
+                themeColor: 'purple',
+                blocked: !!data.blocked,
               });
-              setTransactions(loadedTxs);
-            } else {
-              setTransactions(INITIAL_TRANSACTIONS);
+            },
+            (err) => {
+              console.warn('User doc snapshot warning:', err?.message || err);
+              setProfile((prev) => ({
+                ...prev,
+                uid: user.uid,
+                name: user.displayName || user.email?.split('@')[0] || 'Gamer User',
+                email: user.email || '',
+              }));
             }
-          },
-          (err) => {
-            console.error('Firestore transactions snapshot error:', err);
-          }
-        );
-      } else {
-        setTransactions(INITIAL_TRANSACTIONS);
-        setProfile(INITIAL_PROFILE);
+          );
+
+          // Listen to Firestore transactions for this user
+          const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
+          unsubscribeTx = onSnapshot(
+            q,
+            (snapshot) => {
+              if (!snapshot.empty) {
+                const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
+                  const data = docSnap.data();
+                  return {
+                    id: docSnap.id,
+                    orderId: data.orderId,
+                    type: data.type || 'purchase',
+                    amount: data.amount || 0,
+                    date: data.date || 'Today',
+                    time: data.time || '',
+                    status: data.status || 'Pending',
+                    description: data.description || '',
+                    gameTitle: data.gameTitle,
+                    gameIcon: data.gameIcon,
+                    gameCoverImg: data.gameCoverImg,
+                    productName: data.productName,
+                    productPrice: data.productPrice,
+                    quantity: data.quantity,
+                    playerId: data.playerId,
+                    userEmail: data.userEmail || '',
+                    requirementsData: data.requirementsData || [],
+                    screenshotUrl: data.screenshotUrl,
+                  };
+                });
+                setTransactions(loadedTxs);
+              }
+            },
+            (err) => {
+              console.warn('Firestore transactions snapshot warning:', err?.message || err);
+            }
+          );
+        } else {
+          setProfile(INITIAL_PROFILE);
+        }
+        setAuthChecking(false);
+      },
+      (err) => {
+        console.warn('Auth state listener error:', err?.message || err);
+        setAuthChecking(false);
       }
-      setAuthChecking(false);
-    });
+    );
 
     return () => {
       if (unsubscribeTx) unsubscribeTx();
@@ -164,47 +195,54 @@ export default function App() {
     const unsubscribeGames = onSnapshot(
       qGames,
       (snapshot) => {
-        if (!snapshot.empty) {
-          const loadedGames: Game[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            return {
-              id: docSnap.id,
-              title: data.title || 'Untitled Game',
-              publisher: data.publisher || '',
-              category: data.category || 'action',
-              rating: data.rating || 4.8,
-              icon: data.icon || '🎮',
-              coverImg: data.coverImg || '',
-              color: data.color || 'from-indigo-600 to-purple-600',
-              bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
-              plays: data.plays || 100,
-              description: data.description || '',
-              gameType: data.gameType || 'balloon',
-              products: data.products || [],
-              requirements: data.requirements || [],
-            };
-          });
+        const loadedGames: Game[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            title: data.title || 'Untitled Game',
+            publisher: data.publisher || '',
+            category: data.category || 'action',
+            rating: data.rating || 4.8,
+            icon: data.icon || '🎮',
+            coverImg: data.coverImg || '',
+            color: data.color || 'from-indigo-600 to-purple-600',
+            bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
+            plays: data.plays || 100,
+            description: data.description || '',
+            gameType: data.gameType || 'balloon',
+            products: data.products || [],
+            requirements: data.requirements || [],
+          };
+        });
+        if (loadedGames.length > 0) {
           setGames(loadedGames);
-
-          // Update selected game if currently viewing detail page
-          setSelectedGame((prev) => {
-            if (!prev) return null;
-            const updated = loadedGames.find((g) => g.id === prev.id);
-            return updated || null;
-          });
+          try {
+            localStorage.setItem('bny_games', JSON.stringify(loadedGames));
+          } catch {}
         } else {
-          setGames(INITIAL_GAMES);
+          // If Firestore is empty, check if we have cached games
+          const cached = localStorage.getItem('bny_games');
+          if (cached) {
+            try { setGames(JSON.parse(cached)); } catch {}
+          }
         }
+
+        // Update selected game if currently viewing detail page
+        setSelectedGame((prev) => {
+          if (!prev) return null;
+          const updated = loadedGames.find((g) => g.id === prev.id);
+          return updated || prev;
+        });
       },
       (err) => {
-        console.error('App live games listener error:', err);
+        console.warn('App live games listener warning:', err?.message || err);
       }
     );
 
     return () => unsubscribeGames();
   }, []);
 
-  // Listen for team_members and banners
+  // Listen for team_members, banners and categories
   useEffect(() => {
     const unsubMembers = onSnapshot(
       collection(db, 'team_members'),
@@ -213,7 +251,7 @@ export default function App() {
         setTeamMembers(emails);
       },
       (err) => {
-        console.error('Firestore team_members snapshot error:', err);
+        console.warn('Firestore team_members snapshot warning:', err?.message || err);
       }
     );
 
@@ -226,10 +264,13 @@ export default function App() {
           redirectLink: d.data().redirectLink || '',
           createdAt: d.data().createdAt || '',
         }));
-        setBanners(list);
+        if (list.length > 0) {
+          setBanners(list);
+          try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
+        }
       },
       (err) => {
-        console.error('Firestore banners snapshot error:', err);
+        console.warn('Firestore banners snapshot warning:', err?.message || err);
       }
     );
 
@@ -241,10 +282,13 @@ export default function App() {
           name: d.data().name || '',
           createdAt: d.data().createdAt || '',
         }));
-        setCategories(list);
+        if (list.length > 0) {
+          setCategories(list);
+          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        }
       },
       (err) => {
-        console.error('Firestore categories snapshot error:', err);
+        console.warn('Firestore categories snapshot warning:', err?.message || err);
       }
     );
 
@@ -303,7 +347,7 @@ export default function App() {
           createdAt: new Date().toISOString(),
         });
       } catch (err) {
-        console.error('Error adding deposit to Firestore:', err);
+        console.warn('Error adding deposit to Firestore:', err);
       }
     }
   };
@@ -389,7 +433,7 @@ export default function App() {
           totalSpent: updatedSpent,
         });
       } catch (err) {
-        console.error('Error adding purchase order to Firestore:', err);
+        console.warn('Error adding purchase order to Firestore:', err);
       }
     }
 
@@ -409,7 +453,7 @@ export default function App() {
         }
         await setDoc(userRef, dataToUpdate, { merge: true });
       } catch (err) {
-        console.error('Error updating profile in Firestore:', err);
+        console.warn('Error updating profile in Firestore:', err);
       }
     }
   };

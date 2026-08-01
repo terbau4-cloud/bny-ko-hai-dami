@@ -22,7 +22,14 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
   const [fileName, setFileName] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [paymentQrs, setPaymentQrs] = useState<PaymentQR[]>([]);
+  const [paymentQrs, setPaymentQrs] = useState<PaymentQR[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_payment_qrs');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedQrIndex, setSelectedQrIndex] = useState<number>(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,10 +43,15 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
           title: d.data().title || 'Payment QR',
           imageUrl: d.data().imageUrl || '',
         }));
-        setPaymentQrs(qrs);
+        if (qrs.length > 0) {
+          setPaymentQrs(qrs);
+          try {
+            localStorage.setItem('bny_payment_qrs', JSON.stringify(qrs));
+          } catch {}
+        }
       },
       (err) => {
-        console.error('Firestore payment_qrs error in WalletTab:', err);
+        console.warn('Firestore payment_qrs warning in WalletTab:', err?.message || err);
       }
     );
     return () => unsub();

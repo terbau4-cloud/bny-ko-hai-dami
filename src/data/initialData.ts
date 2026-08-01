@@ -1,130 +1,6 @@
-import { Game, Transaction, UserProfile } from '../types';
+import { Game, Transaction, UserProfile, Category, AppBanner } from '../types';
 
-export const INITIAL_GAMES: Game[] = [
-  {
-    id: 'g1',
-    title: 'Weekly Diamond Pass MLBB',
-    publisher: 'Moonton',
-    category: 'arcade',
-    rating: 4.9,
-    icon: '💎',
-    coverImg: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=400&auto=format&fit=crop&q=80',
-    color: 'from-indigo-600 to-purple-600',
-    bgGradient: 'bg-gradient-to-br from-indigo-600 to-purple-700',
-    plays: 1240,
-    description: 'Claim daily diamonds and exclusive rewards!',
-    gameType: 'balloon',
-    products: [
-      { id: 'p1_1', name: '1x Weekly Pass', price: 210, badge: 'Popular' },
-      { id: 'p1_2', name: '2x Weekly Pass', price: 420 },
-      { id: 'p1_3', name: '3x Weekly Pass', price: 630 },
-      { id: 'p1_4', name: '5x Weekly Pass', price: 1050, badge: 'Best Value' },
-    ],
-  },
-  {
-    id: 'g2',
-    title: 'Mobile Legends (Nepal)',
-    publisher: 'Moonton',
-    category: 'action',
-    rating: 4.8,
-    icon: '⚔️',
-    coverImg: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=400&auto=format&fit=crop&q=80',
-    color: 'from-blue-600 to-indigo-600',
-    bgGradient: 'bg-gradient-to-br from-blue-600 to-indigo-700',
-    plays: 980,
-    description: 'Instant Mobile Legends Diamonds top up for Nepal.',
-    gameType: 'memory',
-    products: [
-      { id: 'p2_1', name: '86 Diamonds', price: 140 },
-      { id: 'p2_2', name: '172 Diamonds', price: 280 },
-      { id: 'p2_3', name: '257 Diamonds', price: 410, badge: 'HOT' },
-      { id: 'p2_4', name: '343 Diamonds', price: 550 },
-      { id: 'p2_5', name: '706 Diamonds', price: 1120 },
-      { id: 'p2_6', name: '2195 Diamonds', price: 3400, badge: 'MEGA' },
-    ],
-  },
-  {
-    id: 'g3',
-    title: 'Double Diamond MLBB',
-    publisher: 'Moonton',
-    category: 'arcade',
-    rating: 4.9,
-    icon: '💎',
-    coverImg: 'https://images.unsplash.com/photo-1612287230202-1ff1d85d1bdf?w=400&auto=format&fit=crop&q=80',
-    color: 'from-purple-600 to-pink-600',
-    bgGradient: 'bg-gradient-to-br from-purple-600 to-pink-600',
-    plays: 1520,
-    description: 'Recharge for 2X Diamonds bonus pack.',
-    gameType: 'tictactoe',
-    products: [
-      { id: 'p3_1', name: '50 + 50 Diamonds', price: 160 },
-      { id: 'p3_2', name: '150 + 150 Diamonds', price: 450, badge: '2X BONUS' },
-      { id: 'p3_3', name: '250 + 250 Diamonds', price: 720 },
-      { id: 'p3_4', name: '500 + 500 Diamonds', price: 1400 },
-    ],
-  },
-  {
-    id: 'g4',
-    title: 'Mobile Legends (Global)',
-    publisher: 'Moonton',
-    category: 'action',
-    rating: 4.7,
-    icon: '🏆',
-    coverImg: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&auto=format&fit=crop&q=80',
-    color: 'from-slate-700 to-slate-900',
-    bgGradient: 'bg-gradient-to-br from-slate-700 to-slate-900',
-    plays: 2100,
-    description: 'Global Mobile Legends Diamonds recharge.',
-    gameType: 'whack',
-    products: [
-      { id: 'p4_1', name: '110 Diamonds', price: 175 },
-      { id: 'p4_2', name: '275 Diamonds', price: 420 },
-      { id: 'p4_3', name: '565 Diamonds', price: 850 },
-      { id: 'p4_4', name: '1155 Diamonds', price: 1700 },
-    ],
-  },
-  {
-    id: 'g5',
-    title: 'Free Fire (Nepal)',
-    publisher: 'Garena',
-    category: 'action',
-    rating: 4.9,
-    icon: '🔥',
-    coverImg: 'https://images.unsplash.com/photo-1560253023-3ec5d502959f?w=400&auto=format&fit=crop&q=80',
-    color: 'from-orange-500 to-red-600',
-    bgGradient: 'bg-gradient-to-br from-orange-500 to-red-600',
-    plays: 3400,
-    description: 'Garena Free Fire Diamonds Top Up via Player ID.',
-    gameType: 'snake',
-    products: [
-      { id: 'p5_1', name: '100 + 10 Diamonds', price: 110 },
-      { id: 'p5_2', name: '210 + 21 Diamonds', price: 210, badge: 'Popular' },
-      { id: 'p5_3', name: '530 + 53 Diamonds', price: 500 },
-      { id: 'p5_4', name: '1080 + 108 Diamonds', price: 1000 },
-      { id: 'p5_5', name: '2200 + 220 Diamonds', price: 2000, badge: 'PRO' },
-    ],
-  },
-  {
-    id: 'g6',
-    title: 'PUBG Mobile (GLOBAL)',
-    publisher: 'TENCENT',
-    category: 'action',
-    rating: 4.8,
-    icon: '🪖',
-    coverImg: 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?w=400&auto=format&fit=crop&q=80',
-    color: 'from-amber-500 to-yellow-600',
-    bgGradient: 'bg-gradient-to-br from-amber-500 to-yellow-600',
-    plays: 4200,
-    description: 'PUBG Mobile UC Top Up fast delivery.',
-    gameType: 'memory',
-    products: [
-      { id: 'p6_1', name: '60 UC', price: 130 },
-      { id: 'p6_2', name: '325 UC', price: 650, badge: 'HOT' },
-      { id: 'p6_3', name: '660 UC', price: 1280 },
-      { id: 'p6_4', name: '1800 UC', price: 3300 },
-    ],
-  }
-];
+export const INITIAL_GAMES: Game[] = [];
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
@@ -144,40 +20,6 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     quantity: 1,
     playerId: '98471920',
   },
-  {
-    id: 'tx_102',
-    orderId: 'BNY-48192038',
-    type: 'purchase',
-    amount: 420,
-    date: 'Yesterday',
-    time: '04:15 PM',
-    status: 'Completed',
-    description: '210 + 21 Diamonds x 2',
-    gameTitle: 'Free Fire (Nepal)',
-    gameIcon: '🔥',
-    gameCoverImg: 'https://images.unsplash.com/photo-1560253023-3ec5d502959f?w=400&auto=format&fit=crop&q=80',
-    productName: '210 + 21 Diamonds',
-    productPrice: 210,
-    quantity: 2,
-    playerId: '54091283',
-  },
-  {
-    id: 'tx_103',
-    orderId: 'BNY-29103847',
-    type: 'purchase',
-    amount: 650,
-    date: 'Jul 26, 2026',
-    time: '02:00 PM',
-    status: 'Rejected',
-    description: '325 UC x 1',
-    gameTitle: 'PUBG Mobile (GLOBAL)',
-    gameIcon: '🪖',
-    gameCoverImg: 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?w=400&auto=format&fit=crop&q=80',
-    productName: '325 UC',
-    productPrice: 650,
-    quantity: 1,
-    playerId: '51928374',
-  },
 ];
 
 export const INITIAL_PROFILE: UserProfile = {
@@ -192,4 +34,9 @@ export const INITIAL_PROFILE: UserProfile = {
   themeColor: 'purple',
   totalGamesPlayed: 48,
 };
+
+export const INITIAL_CATEGORIES: Category[] = [];
+
+export const INITIAL_BANNERS: AppBanner[] = [];
+
 

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Game, AppBanner, Category } from '../types';
-import { ExternalLink, Layers, Gamepad2 } from 'lucide-react';
+import { ExternalLink, Layers, Gamepad2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Props {
   games: Game[];
@@ -9,59 +9,123 @@ interface Props {
   categories?: Category[];
 }
 
-export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [], categories = [] }) => {
+export const HomeTab: React.FC<Props> = ({ games = [], onSelectGame, banners = [], categories = [] }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const activeBanners = banners.length > 0 ? banners : [];
+  const [currentBannerIndex, setCurrentBannerIndex] = useState<number>(0);
+
+  // Deduplicate banners by id/imageUrl
+  const uniqueBanners = banners.filter((b, index, self) =>
+    index === self.findIndex((t) => t.id === b.id || (t.imageUrl && t.imageUrl === b.imageUrl))
+  );
+
+  // Auto-slide banners every 4 seconds if more than 1 banner exists
+  useEffect(() => {
+    if (uniqueBanners.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentBannerIndex((prev) => (prev + 1) % uniqueBanners.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [uniqueBanners.length]);
+
+  // Reset index if banners length changes
+  useEffect(() => {
+    if (currentBannerIndex >= uniqueBanners.length) {
+      setCurrentBannerIndex(0);
+    }
+  }, [uniqueBanners.length, currentBannerIndex]);
 
   // Filter games based on selected category
   const filteredGames = games.filter((game) => {
     if (selectedCategory === 'all') return true;
-    if (!game.category) return true; // show by default if no category tagged
-    return game.category.toLowerCase().trim() === selectedCategory.toLowerCase().trim();
+    const selectedLower = selectedCategory.toLowerCase().trim();
+    const gameCatLower = (game.category || '').toLowerCase().trim();
+    const gameTitleLower = (game.title || '').toLowerCase().trim();
+
+    return (
+      gameCatLower === selectedLower ||
+      gameCatLower.includes(selectedLower) ||
+      selectedLower.includes(gameCatLower) ||
+      gameTitleLower.includes(selectedLower)
+    );
   });
+
+  const activeBanner = uniqueBanners[currentBannerIndex] || uniqueBanners[0];
 
   return (
     <div className="space-y-6 pb-24 max-w-4xl mx-auto">
-      {/* Featured Banner(s) */}
-      {activeBanners.length > 0 ? (
-        <div className="space-y-4">
-          {activeBanners.map((b) => (
-            <div
-              key={b.id}
-              onClick={() => {
-                if (b.redirectLink) {
-                  window.open(b.redirectLink, '_blank', 'noopener,noreferrer');
-                } else if (games[0]) {
-                  onSelectGame(games[0]);
-                }
-              }}
-              className="relative rounded-3xl overflow-hidden shadow-lg border border-slate-200 group bg-slate-900 cursor-pointer transition-all hover:scale-[1.01]"
-            >
-              <img
-                src={b.imageUrl}
-                alt="App Banner"
-                referrerPolicy="no-referrer"
-                className="w-full h-64 sm:h-80 md:h-96 lg:h-[28rem] object-cover transform group-hover:scale-105 transition-transform duration-500"
-              />
-              {b.redirectLink && (
-                <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md border border-white/20">
-                  <span>Visit Link</span>
-                  <ExternalLink size={13} />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="relative rounded-3xl overflow-hidden shadow-lg border border-slate-800 bg-slate-900 h-48 sm:h-64 md:h-80 lg:h-96 animate-pulse flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2 text-slate-500">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-semibold text-slate-400">Loading BNY SHOP Banner...</span>
+      {/* Featured Banner (Single View Carousel) */}
+      {uniqueBanners.length > 0 && activeBanner && (
+        <div className="relative rounded-3xl overflow-hidden shadow-lg border border-slate-200 group bg-slate-900 transition-all">
+          <div
+            onClick={() => {
+              if (activeBanner.redirectLink) {
+                window.open(activeBanner.redirectLink, '_blank', 'noopener,noreferrer');
+              } else if (games[0]) {
+                onSelectGame(games[0]);
+              }
+            }}
+            className="cursor-pointer relative"
+          >
+            <img
+              src={activeBanner.imageUrl}
+              alt="App Banner"
+              referrerPolicy="no-referrer"
+              className="w-full h-64 sm:h-80 md:h-96 lg:h-[28rem] object-cover transform group-hover:scale-103 transition-transform duration-500"
+            />
+            {activeBanner.redirectLink && (
+              <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md border border-white/20 z-10">
+                <span>Visit Link</span>
+                <ExternalLink size={13} />
+              </div>
+            )}
           </div>
+
+          {/* Navigation Arrows for Multiple Banners */}
+          {uniqueBanners.length > 1 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentBannerIndex((prev) => (prev - 1 + uniqueBanners.length) % uniqueBanners.length);
+                }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 bg-slate-900/60 hover:bg-slate-900/90 text-white p-2 rounded-full backdrop-blur-sm transition-all border border-white/20 shadow-md cursor-pointer z-10"
+                aria-label="Previous Banner"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentBannerIndex((prev) => (prev + 1) % uniqueBanners.length);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-900/60 hover:bg-slate-900/90 text-white p-2 rounded-full backdrop-blur-sm transition-all border border-white/20 shadow-md cursor-pointer z-10"
+                aria-label="Next Banner"
+              >
+                <ChevronRight size={20} />
+              </button>
+
+              {/* Pagination Dots */}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 z-10">
+                {uniqueBanners.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCurrentBannerIndex(idx);
+                    }}
+                    className={`h-2 rounded-full transition-all cursor-pointer ${
+                      idx === currentBannerIndex ? 'w-5 bg-indigo-500' : 'w-2 bg-white/50 hover:bg-white/80'
+                    }`}
+                    aria-label={`Go to slide ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* Category Pills / Chips (from Admin added categories) */}
+      {/* Category Pills / Chips (Only shown if categories are added in Admin panel) */}
       {categories.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -117,18 +181,14 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [], ca
 
         {filteredGames.length === 0 ? (
           games.length === 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="bg-slate-900 rounded-3xl overflow-hidden shadow-lg border-2 border-slate-800 animate-pulse flex flex-col justify-between"
-                >
-                  <div className="aspect-square bg-slate-800" />
-                  <div className="p-4 bg-slate-900 space-y-2">
-                    <div className="h-4 bg-slate-800 rounded w-3/4" />
-                  </div>
-                </div>
-              ))}
+            <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3 shadow-2xs">
+              <Gamepad2 size={40} className="text-slate-300 mx-auto" />
+              <p className="text-slate-700 font-extrabold text-base">
+                No items or games available yet
+              </p>
+              <p className="text-slate-500 text-xs">
+                Add games, top-up products, and categories from the Admin Panel.
+              </p>
             </div>
           ) : (
             <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-3 shadow-2xs">
@@ -163,8 +223,8 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [], ca
                       className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500"
                     />
                   ) : (
-                    <div className={`w-full h-full ${game.bgGradient} flex items-center justify-center text-5xl`}>
-                      {game.icon}
+                    <div className={`w-full h-full ${game.bgGradient || 'bg-indigo-600'} flex items-center justify-center text-5xl`}>
+                      {game.icon || '🎮'}
                     </div>
                   )}
                   {/* Subtle Gradient overlay */}
@@ -185,5 +245,6 @@ export const HomeTab: React.FC<Props> = ({ games, onSelectGame, banners = [], ca
     </div>
   );
 };
+
 
 
