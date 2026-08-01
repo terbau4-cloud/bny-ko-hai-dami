@@ -665,41 +665,51 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const totalDepositsCount = transactionsList.filter((t) => t.type === 'deposit').length;
   const pendingDepositsCount = transactionsList.filter((t) => t.type === 'deposit' && t.status === 'Pending').length;
 
-  // Overview Analytics Chart Data Helpers
+  // Overview Analytics Chart Data Helpers (7-day Chronological Trend)
   const getGraphData = () => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const now = new Date();
-    const todayDayName = dayNames[now.getDay()];
 
-    const map: Record<string, { date: string; sales: number; orders: number }> = {};
-    let hasOrders = false;
+    // Generate last 7 days array in chronological order (6 days ago -> today)
+    const days: { key: string; date: string; sales: number; orders: number; deposits: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      const label = i === 0 ? 'Today' : dayNames[d.getDay()];
+      days.push({ key, date: label, sales: 0, orders: 0, deposits: 0 });
+    }
+
+    const todayKey = days[6].key;
 
     transactionsList.forEach((tx) => {
-      if (tx.type !== 'deposit') {
-        let d = tx.date;
-        if (!d || d === 'Today' || d === 'Just Now' || d === 'Recent') {
-          d = todayDayName;
-        }
-        if (!map[d]) {
-          map[d] = { date: d, sales: 0, orders: 0 };
-        }
-        map[d].orders += 1;
+      let txKey = '';
+      if (tx.createdAt) {
+        txKey = tx.createdAt.split('T')[0];
+      } else if (tx.date && tx.date.match(/^\d{4}-\d{2}-\d{2}/)) {
+        txKey = tx.date.substring(0, 10);
+      } else {
+        txKey = todayKey;
+      }
+
+      let bucket = days.find((d) => d.key === txKey);
+      if (!bucket) {
+        bucket = days[6]; // Today bucket fallback
+      }
+
+      if (tx.type === 'deposit') {
         if (tx.status === 'Approved' || tx.status === 'Completed' || tx.status === 'Pending') {
-          map[d].sales += Number(tx.amount || 0);
+          bucket.deposits += Number(tx.amount || 0);
         }
-        hasOrders = true;
+      } else {
+        bucket.orders += 1;
+        if (tx.status === 'Approved' || tx.status === 'Completed' || tx.status === 'Pending') {
+          bucket.sales += Number(tx.amount || 0);
+        }
       }
     });
 
-    const list = Object.values(map);
-
-    if (hasOrders && list.length > 0) {
-      return list;
-    }
-
-    return [
-      { date: todayDayName, sales: 0, orders: 0 }
-    ];
+    return days;
   };
 
   // Handle Approve Order / Deposit
@@ -1852,6 +1862,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                         <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
                         <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                       </linearGradient>
+                      <linearGradient id="colorDeposits" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#a855f7" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                      </linearGradient>
                       <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
@@ -1864,8 +1878,10 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                       contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', borderColor: '#e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
                       labelStyle={{ fontWeight: 'bold', color: '#0f172a' }}
                     />
-                    <Area type="monotone" dataKey="sales" name="Total Sales (RS)" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-                    <Area type="monotone" dataKey="orders" name="Orders Count" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorOrders)" />
+                    <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
+                    <Area type="monotone" dataKey="sales" name="Topup Sales (RS)" stroke="#6366f1" strokeWidth={3} fillOpacity={0.6} fill="url(#colorRevenue)" />
+                    <Area type="monotone" dataKey="deposits" name="Deposits (RS)" stroke="#a855f7" strokeWidth={2.5} fillOpacity={0.4} fill="url(#colorDeposits)" />
+                    <Area type="monotone" dataKey="orders" name="Orders Count" stroke="#10b981" strokeWidth={2} fillOpacity={0.3} fill="url(#colorOrders)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -2308,7 +2324,18 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
               return (
                 <div className="space-y-3">
                   {filteredDeposits.map((tx) => {
-                    const detectedQr = tx.paymentQrTitle || (tx.description && tx.description.match(/\(([^)]+)\)/)?.[1]) || 'Payment QR';
+                    let rawQr = tx.paymentQrTitle?.trim();
+                    if (!rawQr || rawQr.toLowerCase() === 'payment qr' || rawQr.toLowerCase() === 'qr payment') {
+                      const match = tx.description?.match(/\(([^)]+)\)/)?.[1]?.trim();
+                      if (match && match.toLowerCase() !== 'payment qr' && match.toLowerCase() !== 'qr payment') {
+                        rawQr = match;
+                      }
+                    }
+                    if (!rawQr || rawQr.toLowerCase() === 'payment qr' || rawQr.toLowerCase() === 'qr payment') {
+                      const activeAdminQr = paymentQRsList.find((p) => p.title && p.title.trim().toLowerCase() !== 'payment qr')?.title?.trim();
+                      rawQr = activeAdminQr || 'eSewa QR';
+                    }
+                    const detectedQr = rawQr;
                     return (
                       <div
                         key={tx.id}

@@ -98,7 +98,8 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
       return;
     }
 
-    const selectedQrTitle = paymentQrs[selectedQrIndex]?.title || (paymentQrs[0]?.title ?? 'Payment QR');
+    const rawTitle = paymentQrs[selectedQrIndex]?.title || paymentQrs[0]?.title || '';
+    const selectedQrTitle = (rawTitle && rawTitle.toLowerCase() !== 'payment qr') ? rawTitle : 'eSewa QR';
     onAddTransaction(numAmount, screenshot, selectedQrTitle);
     setSubmitted(true);
 

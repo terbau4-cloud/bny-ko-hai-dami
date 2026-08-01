@@ -315,7 +315,7 @@ export default function App() {
 
     const orderId = `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
     const userEmail = profile.email || authUser?.email || '';
-    const qrTitle = paymentQrTitle?.trim() || 'Payment QR';
+    const qrTitle = (paymentQrTitle && paymentQrTitle.trim().toLowerCase() !== 'payment qr') ? paymentQrTitle.trim() : 'eSewa QR';
 
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
