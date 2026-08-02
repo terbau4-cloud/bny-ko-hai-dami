@@ -39,6 +39,7 @@ export interface Transaction {
   time: string;
   status: 'Completed' | 'Pending' | 'Approved' | 'Rejected';
   screenshotUrl?: string;
+  transactionCode?: string;
   description: string;
   paymentQrTitle?: string;
   gameId?: string;

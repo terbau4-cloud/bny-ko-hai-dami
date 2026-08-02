@@ -513,6 +513,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
             requirementsData: data.requirementsData || [],
             screenshotUrl: data.screenshotUrl,
+            transactionCode: data.transactionCode || '',
           };
         });
         setTransactionsList(updatedTxs);
@@ -2332,6 +2333,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                   (tx.orderId && tx.orderId.toLowerCase().includes(q)) ||
                   (tx.description && tx.description.toLowerCase().includes(q)) ||
                   (tx.paymentQrTitle && tx.paymentQrTitle.toLowerCase().includes(q)) ||
+                  (tx.transactionCode && tx.transactionCode.toLowerCase().includes(q)) ||
                   tx.amount.toString().includes(q)
                 );
               });
@@ -2401,23 +2403,30 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                               RS {tx.amount}
                             </span>
                           </div>
+
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-xs font-bold text-slate-500">Transaction Code:</span>
+                            <span className="font-mono font-black text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                              {tx.transactionCode || 'N/A'}
+                              {tx.transactionCode && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(tx.transactionCode!);
+                                    setCopyToast('Transaction code copied!');
+                                    setTimeout(() => setCopyToast(''), 2000);
+                                  }}
+                                  className="text-indigo-500 hover:text-indigo-900 cursor-pointer ml-1"
+                                  title="Copy Transaction Code"
+                                >
+                                  <Copy size={13} />
+                                </button>
+                              )}
+                            </span>
+                          </div>
                         </div>
 
                       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                        {tx.screenshotUrl && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedScreenshotTx(tx);
-                              setSelectedScreenshot(tx.screenshotUrl || null);
-                            }}
-                            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl transition-all cursor-pointer"
-                          >
-                            <Eye size={14} />
-                            <span>Receipt</span>
-                          </button>
-                        )}
-
                         {tx.status === 'Pending' && (
                           <>
                             <button

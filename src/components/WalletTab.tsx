@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { QrCode, Upload, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { QrCode, CheckCircle2, ShieldCheck, ArrowRight, Hash } from 'lucide-react';
 import { motion } from 'motion/react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface Props {
-  onAddTransaction: (amount: number, screenshotUrl: string, paymentQrTitle?: string) => void;
+  onAddTransaction: (amount: number, transactionCode: string, paymentQrTitle?: string) => void;
   currentBalance: number;
   isBlocked?: boolean;
 }
@@ -18,10 +18,8 @@ interface PaymentQR {
 
 export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, isBlocked = false }) => {
   const [amount, setAmount] = useState<string>('');
-  const [screenshot, setScreenshot] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>('');
+  const [transactionCode, setTransactionCode] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [paymentQrs, setPaymentQrs] = useState<PaymentQR[]>(() => {
     try {
       const cached = localStorage.getItem('bny_payment_qrs');
@@ -31,8 +29,6 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
     }
   });
   const [selectedQrIndex, setSelectedQrIndex] = useState<number>(0);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -57,31 +53,6 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
     return () => unsub();
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
-    }
-  };
-
-  const processFile = (file: File) => {
-    setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setScreenshot(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      processFile(file);
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isBlocked) {
@@ -93,20 +64,19 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
       alert('Please enter a valid amount!');
       return;
     }
-    if (!screenshot) {
-      alert('Please upload payment screenshot!');
+    if (!transactionCode.trim()) {
+      alert('Please enter your Transaction Code!');
       return;
     }
 
     const rawTitle = paymentQrs[selectedQrIndex]?.title || paymentQrs[0]?.title || '';
     const selectedQrTitle = (rawTitle && rawTitle.toLowerCase() !== 'payment qr') ? rawTitle : 'eSewa QR';
-    onAddTransaction(numAmount, screenshot, selectedQrTitle);
+    onAddTransaction(numAmount, transactionCode.trim(), selectedQrTitle);
     setSubmitted(true);
 
     setTimeout(() => {
       setSubmitted(false);
-      setScreenshot(null);
-      setFileName('');
+      setTransactionCode('');
       setAmount('');
     }, 2800);
   };
@@ -138,9 +108,9 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
           <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-md">
             <CheckCircle2 size={40} />
           </div>
-          <h3 className="text-2xl font-bold text-emerald-900">Payment Submitted! 🎉</h3>
+          <h3 className="text-2xl font-bold text-emerald-900">Payment Request Submitted! 🎉</h3>
           <p className="text-sm text-emerald-700 font-medium">
-            Your top up of <span className="font-bold text-lg">RS {amount}</span> has been uploaded. Track status in History!
+            Your top up of <span className="font-bold text-lg">RS {amount}</span> with Transaction Code <span className="font-mono font-black">{transactionCode}</span> has been submitted. Track status in History!
           </p>
         </motion.div>
       ) : (
@@ -266,56 +236,30 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
             </div>
           </div>
 
-          {/* STEP 3: UPLOAD SCREENSHOT */}
+          {/* STEP 3: ENTER TRANSACTION CODE */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center gap-2.5">
               <span className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold text-sm flex items-center justify-center shadow-xs">
                 3
               </span>
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Upload className="text-indigo-600" /> Upload Receipt Screenshot
+                <Hash className="text-indigo-600" /> Transaction Code
               </h3>
             </div>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              After transferring payment via QR code, enter your <strong>Transaction Code</strong> / Reference ID from eSewa, Khalti, or mobile banking.
+            </p>
 
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              className="hidden"
-              id="screenshot-file-input"
-            />
-
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${
-                isDragging
-                  ? 'border-indigo-500 bg-indigo-50'
-                  : screenshot
-                  ? 'border-emerald-400 bg-emerald-50/50'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-              }`}
-            >
-              {screenshot ? (
-                <div className="space-y-3">
-                  <div className="relative w-32 h-32 mx-auto rounded-xl overflow-hidden border-2 border-emerald-400 shadow-xs">
-                    <img src={screenshot} alt="Screenshot preview" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="text-emerald-800 font-bold text-sm flex items-center justify-center gap-1.5">
-                    <CheckCircle2 size={18} className="text-emerald-600" /> Screenshot Attached ({fileName || 'Receipt'})
-                  </div>
-                  <p className="text-xs text-slate-500">Click to change image</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Upload className="w-8 h-8 text-slate-400 mx-auto" />
-                  <span className="text-sm font-medium text-slate-600 block">Click or drag & drop to upload screenshot</span>
-                  <p className="text-xs text-slate-400">Supports PNG, JPG, JPEG payment proofs</p>
-                </div>
-              )}
+            <div className="relative">
+              <input
+                type="text"
+                value={transactionCode}
+                onChange={(e) => setTransactionCode(e.target.value)}
+                id="transaction-code-input"
+                placeholder="Enter Transaction Code (e.g. 84920183921)"
+                className="w-full px-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-base font-bold text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors font-mono"
+                required
+              />
             </div>
           </div>
 
@@ -325,7 +269,7 @@ export const WalletTab: React.FC<Props> = ({ onAddTransaction, currentBalance, i
             id="submit-payment-btn"
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 text-base cursor-pointer"
           >
-            <span>Confirm</span>
+            <span>Confirm Deposit</span>
             <ArrowRight size={20} />
           </button>
         </form>

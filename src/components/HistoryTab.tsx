@@ -132,8 +132,8 @@ export const HistoryTab: React.FC<Props> = ({ transactions }) => {
                   </div>
                 </div>
 
-                {/* Bottom Row / Product details for Game Purchases */}
-                {isPurchase && (
+                {/* Bottom Row / Product details for Game Purchases or Deposit Transaction Code */}
+                {isPurchase ? (
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-700 bg-slate-50/70 p-2.5 rounded-xl">
                     <div className="space-y-0.5">
                       <div className="font-bold text-slate-900 text-xs">
@@ -143,6 +143,18 @@ export const HistoryTab: React.FC<Props> = ({ transactions }) => {
                     </div>
 
                     <div className="font-black text-sm text-slate-900">
+                      RS {tx.amount}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-700 bg-slate-50/70 p-2.5 rounded-xl">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-slate-700 text-xs">
+                        Transaction Code: <span className="font-mono font-extrabold text-indigo-700">{tx.transactionCode || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    <div className="font-black text-sm text-emerald-600">
                       RS {tx.amount}
                     </div>
                   </div>

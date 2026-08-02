@@ -106,12 +106,30 @@ export default function App() {
           const userDocRef = doc(db, 'users', user.uid);
           unsubscribeUserDoc = onSnapshot(
             userDocRef,
-            (userSnap) => {
-              if (!userSnap.exists() || userSnap.data()?.isDeleted === true) {
+            async (userSnap) => {
+              if (userSnap.exists() && userSnap.data()?.isDeleted === true) {
                 signOut(auth).catch(() => {});
                 setAuthUser(null);
                 setProfile(INITIAL_PROFILE);
                 alert('Your account has been deleted by Admin. You have been logged out.');
+                return;
+              }
+
+              if (!userSnap.exists()) {
+                // Document does not exist in Firestore yet: auto-create it so user appears in admin list
+                try {
+                  await setDoc(userDocRef, {
+                    uid: user.uid,
+                    fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
+                    email: user.email || '',
+                    whatsapp: '',
+                    walletBalance: 0,
+                    totalSpent: 0,
+                    createdAt: new Date().toISOString(),
+                  }, { merge: true });
+                } catch (err) {
+                  console.warn('Auto create user doc error:', err);
+                }
                 return;
               }
 
@@ -171,6 +189,7 @@ export default function App() {
                     paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
                     requirementsData: data.requirementsData || [],
                     screenshotUrl: data.screenshotUrl,
+                    transactionCode: data.transactionCode || '',
                   };
                 });
                 setTransactions(loadedTxs);
@@ -306,7 +325,7 @@ export default function App() {
   };
 
   // Handle Wallet Top-Up Deposit
-  const handleAddTransaction = async (amount: number, screenshotUrl: string, paymentQrTitle?: string) => {
+  const handleAddTransaction = async (amount: number, transactionCode: string, paymentQrTitle?: string) => {
     if (profile.blocked) {
       alert('You have been blocked by Admin. You cannot submit deposit requests.');
       return;
@@ -315,6 +334,7 @@ export default function App() {
     const orderId = `BNY-${Math.floor(10000000 + Math.random() * 90000000)}`;
     const userEmail = profile.email || authUser?.email || '';
     const qrTitle = (paymentQrTitle && paymentQrTitle.trim().toLowerCase() !== 'payment qr') ? paymentQrTitle.trim() : 'eSewa QR';
+    const cleanTxCode = transactionCode.trim();
 
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
@@ -326,7 +346,7 @@ export default function App() {
       status: 'Pending',
       description: `Wallet Deposit (${qrTitle})`,
       paymentQrTitle: qrTitle,
-      screenshotUrl,
+      transactionCode: cleanTxCode,
       userEmail,
     };
 
@@ -346,7 +366,7 @@ export default function App() {
           status: 'Pending',
           description: `Wallet Deposit (${qrTitle})`,
           paymentQrTitle: qrTitle,
-          screenshotUrl,
+          transactionCode: cleanTxCode,
           createdAt: new Date().toISOString(),
         });
       } catch (err) {
