@@ -238,8 +238,14 @@ export default function App() {
             plays: data.plays || 100,
             description: data.description || '',
             gameType: data.gameType || 'balloon',
-            products: data.products || [],
-            requirements: data.requirements || [],
+            products: Array.isArray(data.products)
+              ? data.products.map((p: any, idx: number) => ({
+                  id: p.id || `prod_${idx}`,
+                  name: p.name || 'Package',
+                  price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+                }))
+              : [],
+            requirements: Array.isArray(data.requirements) ? data.requirements : [],
           };
         });
         setGames(loadedGames);

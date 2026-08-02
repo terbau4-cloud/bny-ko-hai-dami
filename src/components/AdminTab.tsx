@@ -544,8 +544,14 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             plays: data.plays || 100,
             description: data.description || '',
             gameType: data.gameType || 'balloon',
-            products: data.products || [],
-            requirements: data.requirements || [],
+            products: Array.isArray(data.products)
+              ? data.products.map((p: any, idx: number) => ({
+                  id: p.id || `prod_${idx}`,
+                  name: p.name || 'Package',
+                  price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+                }))
+              : [],
+            requirements: Array.isArray(data.requirements) ? data.requirements : [],
           };
         });
         setGamesList(updatedGames);
@@ -862,26 +868,47 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     if (!gameTitleInput.trim()) return;
 
     const selectedCategory = gameCategoryInput.trim() || categoriesList[0]?.name || 'Popular Games';
-    let nextGamesList: Game[] = [];
-    let savedGameObj: Game | null = null;
 
     if (editingGame) {
-      nextGamesList = gamesList.map((g) => {
-        if (g.id === editingGame.id) {
-          const updated = {
-            ...g,
+      const freshGame = gamesList.find((g) => g.id === editingGame.id) || editingGame;
+      const updatedGame: Game = {
+        ...freshGame,
+        title: gameTitleInput.trim(),
+        coverImg: gameLogoInput.trim(),
+        category: selectedCategory,
+      };
+
+      const nextGamesList = gamesList.map((g) => (g.id === editingGame.id ? updatedGame : g));
+      setGamesList(nextGamesList);
+      if (selectedAdminGame?.id === editingGame.id) {
+        setSelectedAdminGame(updatedGame);
+      }
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
+
+      setIsGameModalOpen(false);
+      setEditingGame(null);
+      setGameTitleInput('');
+      setGameLogoInput('');
+      setGameCategoryInput('');
+
+      try {
+        // Only update title, coverImg, and category in Firestore to avoid touching products/requirements
+        await setDoc(
+          doc(db, 'games', editingGame.id),
+          {
             title: gameTitleInput.trim(),
             coverImg: gameLogoInput.trim(),
             category: selectedCategory,
-          };
-          savedGameObj = updated;
-          return updated;
-        }
-        return g;
-      });
+          },
+          { merge: true }
+        );
+      } catch (err: any) {
+        console.error('Error saving game to Firestore:', err);
+        alert('Failed to save game to database: ' + (err?.message || 'Check image size or network.'));
+      }
     } else {
       const newId = `game_${Date.now()}`;
-      savedGameObj = {
+      const newGame: Game = {
         id: newId,
         title: gameTitleInput.trim(),
         coverImg: gameLogoInput.trim(),
@@ -896,27 +923,23 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         products: [],
         requirements: [],
       };
-      nextGamesList = [savedGameObj, ...gamesList];
-    }
 
-    setGamesList(nextGamesList);
-    try {
-      localStorage.setItem('bny_games', JSON.stringify(nextGamesList));
-    } catch {}
+      const nextGamesList = [newGame, ...gamesList];
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
 
-    setIsGameModalOpen(false);
-    setEditingGame(null);
-    setGameTitleInput('');
-    setGameLogoInput('');
-    setGameCategoryInput('');
+      setIsGameModalOpen(false);
+      setEditingGame(null);
+      setGameTitleInput('');
+      setGameLogoInput('');
+      setGameCategoryInput('');
 
-    try {
-      if (savedGameObj) {
-        await setDoc(doc(db, 'games', savedGameObj.id), savedGameObj, { merge: true });
+      try {
+        await setDoc(doc(db, 'games', newId), newGame, { merge: true });
+      } catch (err: any) {
+        console.error('Error saving game to Firestore:', err);
+        alert('Failed to save game to database: ' + (err?.message || 'Check image size or network.'));
       }
-    } catch (err: any) {
-      console.error('Error saving game to Firestore:', err);
-      alert('Failed to save game to database: ' + (err?.message || 'Check image size or network.'));
     }
   };
 
@@ -943,7 +966,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const handleSaveRequirement = async () => {
     if (!selectedAdminGame || !reqNameInput.trim()) return;
 
-    const currentReqs = selectedAdminGame.requirements || [];
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
+    const currentReqs = freshGame.requirements || [];
     let updatedReqs: GameRequirement[] = [];
 
     if (editingRequirement) {
@@ -970,11 +994,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         { merge: true }
       );
 
-      setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
       const nextGamesList = gamesList.map((g) =>
         g.id === selectedAdminGame.id ? { ...g, requirements: updatedReqs } : g
       );
       setGamesList(nextGamesList);
+      setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
       try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
 
       setIsRequirementModalOpen(false);
@@ -991,7 +1015,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   const handleDeleteRequirement = async (reqId: string) => {
     if (!selectedAdminGame) return;
-    const currentReqs = selectedAdminGame.requirements || [];
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
+    const currentReqs = freshGame.requirements || [];
     const updatedReqs = currentReqs.filter((r) => r.id !== reqId);
 
     try {
@@ -1002,11 +1027,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         },
         { merge: true }
       );
-      setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
       const nextGamesList = gamesList.map((g) =>
         g.id === selectedAdminGame.id ? { ...g, requirements: updatedReqs } : g
       );
       setGamesList(nextGamesList);
+      setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
       try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
     } catch (err: any) {
       console.error('Error deleting requirement:', err);
@@ -1017,7 +1042,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const handleSaveProduct = async () => {
     if (!selectedAdminGame) return;
 
-    const currentProds = selectedAdminGame.products || [];
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
+    const currentProds = freshGame.products || [];
     let updatedProds: TopupProduct[] = [...currentProds];
 
     // Check if bulk text was provided without single inputs
@@ -1058,20 +1084,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       return;
     }
 
+    // Clean product objects before saving to Firestore
+    const cleanProds: TopupProduct[] = updatedProds.map((p, idx) => ({
+      id: p.id || `prod_${Date.now()}_${idx}`,
+      name: (p.name || '').trim(),
+      price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+    }));
+
     try {
       await setDoc(
         doc(db, 'games', selectedAdminGame.id),
         {
-          products: updatedProds,
+          products: cleanProds,
         },
         { merge: true }
       );
 
-      setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
       const nextGamesList = gamesList.map((g) =>
-        g.id === selectedAdminGame.id ? { ...g, products: updatedProds } : g
+        g.id === selectedAdminGame.id ? { ...g, products: cleanProds } : g
       );
       setGamesList(nextGamesList);
+      setSelectedAdminGame((prev) => (prev ? { ...prev, products: cleanProds } : null));
       try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
 
       setIsProductModalOpen(false);
@@ -1089,7 +1122,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   const handleDeleteProduct = async (prodId: string) => {
     if (!selectedAdminGame) return;
-    const currentProds = selectedAdminGame.products || [];
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
+    const currentProds = freshGame.products || [];
     const updatedProds = currentProds.filter((p) => p.id !== prodId);
 
     try {
@@ -1100,11 +1134,12 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         },
         { merge: true }
       );
-      setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
+
       const nextGamesList = gamesList.map((g) =>
         g.id === selectedAdminGame.id ? { ...g, products: updatedProds } : g
       );
       setGamesList(nextGamesList);
+      setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
       try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
     } catch (err: any) {
       console.error('Error deleting product:', err);
@@ -1113,7 +1148,8 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   const handleDeleteAllProducts = async () => {
     if (!selectedAdminGame) return;
-    const currentProds = selectedAdminGame.products || [];
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
+    const currentProds = freshGame.products || [];
     if (currentProds.length === 0) {
       alert('There are no products to delete.');
       return;
@@ -1126,9 +1162,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       return;
     }
     try {
-      await setDoc(doc(db, 'games', selectedAdminGame.id), {
-        products: [],
-      }, { merge: true });
+      await setDoc(
+        doc(db, 'games', selectedAdminGame.id),
+        {
+          products: [],
+        },
+        { merge: true }
+      );
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: [] } : null));
       const nextGamesList = gamesList.map((g) =>
         g.id === selectedAdminGame.id ? { ...g, products: [] } : g
@@ -1235,6 +1275,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   const handleDetectAndAddProducts = async () => {
     if (!selectedAdminGame || !bulkListInput.trim()) return;
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
     const detectedItems = parsePastedProductList(bulkListInput);
 
     if (detectedItems.length === 0) {
@@ -1244,7 +1285,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
     setBulkImportLoading(true);
     try {
-      const currentProds = selectedAdminGame.products || [];
+      const currentProds = freshGame.products || [];
       const newProds: TopupProduct[] = detectedItems.map((item, idx) => ({
         id: `prod_${Date.now()}_${idx}`,
         name: item.name,
@@ -1253,15 +1294,19 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
       const updatedProds = [...currentProds, ...newProds];
 
-      await setDoc(doc(db, 'games', selectedAdminGame.id), {
-        products: updatedProds,
-      }, { merge: true });
+      await setDoc(
+        doc(db, 'games', selectedAdminGame.id),
+        {
+          products: updatedProds,
+        },
+        { merge: true }
+      );
 
-      setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
       const nextGamesList = gamesList.map((g) =>
         g.id === selectedAdminGame.id ? { ...g, products: updatedProds } : g
       );
       setGamesList(nextGamesList);
+      setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
       try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
 
       setBulkListInput('');
