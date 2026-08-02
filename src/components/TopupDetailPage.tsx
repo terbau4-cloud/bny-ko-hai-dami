@@ -38,16 +38,13 @@ export const TopupDetailPage: React.FC<Props> = ({
 
   useEffect(() => {
     if (availableProducts.length > 0) {
-      setSelectedProduct(availableProducts[0]);
+      if (!selectedProduct || !availableProducts.some((p) => p.id === selectedProduct.id)) {
+        setSelectedProduct(availableProducts[0]);
+      }
     } else {
       setSelectedProduct(null);
     }
-    setQuantity(1);
-    setReqValues({});
-    setPlayerId('');
-    setErrorMsg('');
-    setIsSuccess(false);
-  }, [game]);
+  }, [game, game?.products]);
 
   const totalAmount = selectedProduct ? selectedProduct.price * quantity : 0;
 

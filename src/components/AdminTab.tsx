@@ -971,10 +971,18 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       );
 
       setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
+      const nextGamesList = gamesList.map((g) =>
+        g.id === selectedAdminGame.id ? { ...g, requirements: updatedReqs } : g
+      );
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
+
       setIsRequirementModalOpen(false);
       setEditingRequirement(null);
       setReqNameInput('');
       setReqTypeInput('number');
+      setCopyToast('Requirement saved successfully!');
+      setTimeout(() => setCopyToast(''), 2500);
     } catch (err: any) {
       console.error('Error saving requirement:', err);
       alert('Failed to save requirement: ' + (err?.message || 'Unknown error'));
@@ -995,6 +1003,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         { merge: true }
       );
       setSelectedAdminGame((prev) => (prev ? { ...prev, requirements: updatedReqs } : null));
+      const nextGamesList = gamesList.map((g) =>
+        g.id === selectedAdminGame.id ? { ...g, requirements: updatedReqs } : g
+      );
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
     } catch (err: any) {
       console.error('Error deleting requirement:', err);
     }
@@ -1002,26 +1015,47 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
   // ================= PRODUCT CRUD HANDLERS =================
   const handleSaveProduct = async () => {
-    if (!selectedAdminGame || !prodNameInput.trim() || !prodPriceInput.trim()) return;
-    const priceNum = parseFloat(prodPriceInput);
-    if (isNaN(priceNum)) return;
+    if (!selectedAdminGame) return;
 
     const currentProds = selectedAdminGame.products || [];
-    let updatedProds: TopupProduct[] = [];
+    let updatedProds: TopupProduct[] = [...currentProds];
 
-    if (editingProduct) {
-      updatedProds = currentProds.map((p) =>
-        p.id === editingProduct.id
-          ? { ...p, name: prodNameInput.trim(), price: priceNum }
-          : p
-      );
+    // Check if bulk text was provided without single inputs
+    if (bulkListInput.trim() && (!prodNameInput.trim() || !prodPriceInput.trim())) {
+      const detectedItems = parsePastedProductList(bulkListInput);
+      if (detectedItems.length === 0) {
+        alert('Could not detect product names and prices from the bulk text. Format e.g.: 100 Diamonds - Rs 140');
+        return;
+      }
+      const newBulkProds: TopupProduct[] = detectedItems.map((item, idx) => ({
+        id: `prod_${Date.now()}_${idx}`,
+        name: item.name,
+        price: item.price,
+      }));
+      updatedProds = [...updatedProds, ...newBulkProds];
+    } else if (prodNameInput.trim() && prodPriceInput.trim()) {
+      const priceNum = parseFloat(prodPriceInput);
+      if (isNaN(priceNum)) {
+        alert('Please enter a valid numeric price!');
+        return;
+      }
+
+      if (editingProduct) {
+        updatedProds = currentProds.map((p) =>
+          p.id === editingProduct.id
+            ? { ...p, name: prodNameInput.trim(), price: priceNum }
+            : p
+        );
+      } else {
+        const newProd: TopupProduct = {
+          id: `prod_${Date.now()}`,
+          name: prodNameInput.trim(),
+          price: priceNum,
+        };
+        updatedProds = [...currentProds, newProd];
+      }
     } else {
-      const newProd: TopupProduct = {
-        id: `prod_${Date.now()}`,
-        name: prodNameInput.trim(),
-        price: priceNum,
-      };
-      updatedProds = [...currentProds, newProd];
+      return;
     }
 
     try {
@@ -1034,10 +1068,19 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       );
 
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
+      const nextGamesList = gamesList.map((g) =>
+        g.id === selectedAdminGame.id ? { ...g, products: updatedProds } : g
+      );
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
+
       setIsProductModalOpen(false);
       setEditingProduct(null);
       setProdNameInput('');
       setProdPriceInput('');
+      setBulkListInput('');
+      setCopyToast('Product saved successfully!');
+      setTimeout(() => setCopyToast(''), 2500);
     } catch (err: any) {
       console.error('Error saving product:', err);
       alert('Failed to save product: ' + (err?.message || 'Unknown error'));
@@ -1058,6 +1101,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         { merge: true }
       );
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
+      const nextGamesList = gamesList.map((g) =>
+        g.id === selectedAdminGame.id ? { ...g, products: updatedProds } : g
+      );
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
     } catch (err: any) {
       console.error('Error deleting product:', err);
     }
@@ -1078,10 +1126,15 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       return;
     }
     try {
-      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
+      await setDoc(doc(db, 'games', selectedAdminGame.id), {
         products: [],
-      });
+      }, { merge: true });
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: [] } : null));
+      const nextGamesList = gamesList.map((g) =>
+        g.id === selectedAdminGame.id ? { ...g, products: [] } : g
+      );
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
       setCopyToast('Deleted all products successfully!');
       setTimeout(() => setCopyToast(''), 2500);
     } catch (err) {
@@ -1200,11 +1253,17 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
       const updatedProds = [...currentProds, ...newProds];
 
-      await updateDoc(doc(db, 'games', selectedAdminGame.id), {
+      await setDoc(doc(db, 'games', selectedAdminGame.id), {
         products: updatedProds,
-      });
+      }, { merge: true });
 
       setSelectedAdminGame((prev) => (prev ? { ...prev, products: updatedProds } : null));
+      const nextGamesList = gamesList.map((g) =>
+        g.id === selectedAdminGame.id ? { ...g, products: updatedProds } : g
+      );
+      setGamesList(nextGamesList);
+      try { localStorage.setItem('bny_games', JSON.stringify(nextGamesList)); } catch {}
+
       setBulkListInput('');
       setIsProductModalOpen(false);
       setEditingProduct(null);
@@ -3679,11 +3738,13 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 </button>
                 <button
                   onClick={handleSaveProduct}
-                  disabled={!prodNameInput.trim() || !prodPriceInput.trim()}
+                  disabled={(!prodNameInput.trim() || !prodPriceInput.trim()) && !bulkListInput.trim()}
                   id="save-product-submit-btn"
                   className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl cursor-pointer shadow-md disabled:opacity-50"
                 >
-                  Save Single Product
+                  {bulkListInput.trim() && (!prodNameInput.trim() || !prodPriceInput.trim())
+                    ? `Save ${parsePastedProductList(bulkListInput).length} Detected Products`
+                    : 'Save Product'}
                 </button>
               </div>
             </div>

@@ -40,15 +40,13 @@ export const TopupDetailModal: React.FC<Props> = ({
   // Set default selected product when game changes
   useEffect(() => {
     if (availableProducts.length > 0) {
-      setSelectedProduct(availableProducts[0]);
+      if (!selectedProduct || !availableProducts.some((p) => p.id === selectedProduct.id)) {
+        setSelectedProduct(availableProducts[0]);
+      }
     } else {
       setSelectedProduct(null);
     }
-    setQuantity(1);
-    setReqValues({});
-    setErrorMsg('');
-    setIsSuccess(false);
-  }, [game]);
+  }, [game, game?.products]);
 
   if (!game) return null;
 
