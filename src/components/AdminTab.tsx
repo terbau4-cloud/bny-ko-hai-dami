@@ -124,8 +124,22 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
   }, [isMasterAdmin, activeSection]);
 
-  const [usersList, setUsersList] = useState<UserProfile[]>([]);
-  const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
+  const [usersList, setUsersList] = useState<UserProfile[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_admin_users');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [transactionsList, setTransactionsList] = useState<Transaction[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_admin_transactions');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [gamesList, setGamesList] = useState<Game[]>(() => {
     try {
       const cached = localStorage.getItem('bny_games');
@@ -191,78 +205,6 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [memberEmailInput, setMemberEmailInput] = useState<string>('');
   const [memberMsg, setMemberMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [memberAddLoading, setMemberAddLoading] = useState<boolean>(false);
-
-  // Firestore listeners for banners, team_members & payment_qrs
-  useEffect(() => {
-    const unsubBanners = onSnapshot(
-      collection(db, 'banners'),
-      (snap) => {
-        const list: AppBanner[] = snap.docs.map((d) => ({
-          id: d.id,
-          imageUrl: d.data().imageUrl || '',
-          redirectLink: d.data().redirectLink || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        setBannersList(list);
-      },
-      (err) => {
-        console.error('Admin banners snapshot error:', err);
-      }
-    );
-
-    const unsubMembers = onSnapshot(
-      collection(db, 'team_members'),
-      (snap) => {
-        const list: TeamMember[] = snap.docs.map((d) => ({
-          id: d.id,
-          email: d.data().email || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        setTeamMembersList(list);
-      },
-      (err) => {
-        console.error('Admin team_members snapshot error:', err);
-      }
-    );
-
-    const unsubQRs = onSnapshot(
-      collection(db, 'payment_qrs'),
-      (snap) => {
-        const list: PaymentQR[] = snap.docs.map((d) => ({
-          id: d.id,
-          title: d.data().title || 'Payment QR',
-          imageUrl: d.data().imageUrl || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        setPaymentQRsList(list);
-      },
-      (err) => {
-        console.error('Admin payment_qrs snapshot error:', err);
-      }
-    );
-
-    const unsubCategories = onSnapshot(
-      collection(db, 'categories'),
-      (snap) => {
-        const list: Category[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        setCategoriesList(list);
-      },
-      (err) => {
-        console.error('Admin categories snapshot error:', err);
-      }
-    );
-
-    return () => {
-      unsubBanners();
-      unsubMembers();
-      unsubQRs();
-      unsubCategories();
-    };
-  }, []);
 
   // Category Save / Delete Handlers
   const handleSaveCategory = async () => {
@@ -479,6 +421,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           };
         });
         setUsersList(fetchedUsers);
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
         setLoading(false);
       },
       (err) => {
@@ -514,9 +457,28 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             requirementsData: data.requirementsData || [],
             screenshotUrl: data.screenshotUrl,
             transactionCode: data.transactionCode || '',
+            createdAt: data.createdAt || '',
           };
         });
+
+        // Deterministic sort: newest transactions at top
+        updatedTxs.sort((a, b) => {
+          const getTime = (tx: Transaction) => {
+            if (tx.createdAt) {
+              const t = new Date(tx.createdAt).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+            if (tx.id && tx.id.startsWith('tx_')) {
+              const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
+              if (!isNaN(num) && num > 0) return num;
+            }
+            return 0;
+          };
+          return getTime(b) - getTime(a);
+        });
+
         setTransactionsList(updatedTxs);
+        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
         setLoading(false);
       },
       (err) => {
@@ -730,36 +692,59 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       const txRef = doc(db, 'transactions', tx.id);
       await updateDoc(txRef, { status: 'Approved' });
 
-      setTransactionsList((prev) =>
-        prev.map((item) => (item.id === tx.id ? { ...item, status: 'Approved' } : item))
-      );
+      setTransactionsList((prev) => {
+        const next = prev.map((item) => (item.id === tx.id ? { ...item, status: 'Approved' } : item));
+        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(next)); } catch {}
+        return next;
+      });
 
       // If deposit, credit user wallet
       if (tx.type === 'deposit') {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        let targetDocId = '';
+        let targetDocId = (tx as any).userId || '';
         let currentBal = 0;
 
-        for (const userDoc of usersSnap.docs) {
-          const uData = userDoc.data();
-          if (
-            userDoc.id === (tx as any).userId ||
-            (uData.email && (tx as any).userEmail && uData.email.toLowerCase() === (tx as any).userEmail.toLowerCase())
-          ) {
-            targetDocId = userDoc.id;
-            currentBal = typeof uData.walletBalance === 'number' ? uData.walletBalance : 0;
-            break;
+        if (targetDocId) {
+          const userInList = usersList.find((u) => u.uid === targetDocId);
+          if (userInList) currentBal = userInList.walletBalance || 0;
+        }
+
+        if (!targetDocId) {
+          const matched = usersList.find(
+            (u) => u.email && (tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()
+          );
+          if (matched) {
+            targetDocId = matched.uid;
+            currentBal = matched.walletBalance || 0;
+          }
+        }
+
+        if (!targetDocId) {
+          const usersSnap = await getDocs(collection(db, 'users'));
+          for (const userDoc of usersSnap.docs) {
+            const uData = userDoc.data();
+            if (
+              userDoc.id === (tx as any).userId ||
+              (uData.email && (tx as any).userEmail && uData.email.toLowerCase() === (tx as any).userEmail.toLowerCase())
+            ) {
+              targetDocId = userDoc.id;
+              currentBal = typeof uData.walletBalance === 'number' ? uData.walletBalance : 0;
+              break;
+            }
           }
         }
 
         if (targetDocId) {
           const newBal = currentBal + tx.amount;
           await updateDoc(doc(db, 'users', targetDocId), { walletBalance: newBal });
-          setUsersList((prev) =>
-            prev.map((u) => (u.uid === targetDocId ? { ...u, walletBalance: newBal } : u))
-          );
+          setUsersList((prev) => {
+            const next = prev.map((u) => (u.uid === targetDocId ? { ...u, walletBalance: newBal } : u));
+            try { localStorage.setItem('bny_admin_users', JSON.stringify(next)); } catch {}
+            return next;
+          });
         }
       }
+      setCopyToast('Order approved successfully!');
+      setTimeout(() => setCopyToast(''), 2000);
     } catch (err) {
       console.error('Error approving order:', err);
     }
@@ -771,11 +756,35 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       const txRef = doc(db, 'transactions', txId);
       await updateDoc(txRef, { status: 'Rejected' });
 
-      setTransactionsList((prev) =>
-        prev.map((item) => (item.id === txId ? { ...item, status: 'Rejected' } : item))
-      );
+      setTransactionsList((prev) => {
+        const next = prev.map((item) => (item.id === txId ? { ...item, status: 'Rejected' } : item));
+        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setCopyToast('Order rejected');
+      setTimeout(() => setCopyToast(''), 2000);
     } catch (err) {
       console.error('Error rejecting order:', err);
+    }
+  };
+
+  // Handle Delete Order / Deposit
+  const handleDeleteOrder = async (txId: string) => {
+    if (!window.confirm('Are you sure you want to delete this order/deposit record? This will permanently remove it from Firestore.')) return;
+    try {
+      const txRef = doc(db, 'transactions', txId);
+      await deleteDoc(txRef);
+
+      setTransactionsList((prev) => {
+        const next = prev.filter((item) => item.id !== txId);
+        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setCopyToast('Record deleted');
+      setTimeout(() => setCopyToast(''), 2000);
+    } catch (err) {
+      console.error('Error deleting transaction record:', err);
+      alert('Failed to delete transaction record.');
     }
   };
 
@@ -2324,28 +2333,39 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                           )}
                         </div>
 
-                        {/* Action Buttons for Pending orders */}
-                        {tx.status === 'Pending' && (
-                          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                            <button
-                              onClick={() => handleApproveOrder(tx)}
-                              id={`approve-order-${tx.id}`}
-                              className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                            >
-                              <CheckCircle2 size={16} />
-                              <span>Approve</span>
-                            </button>
+                        {/* Action Buttons for orders */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                          {tx.status === 'Pending' && (
+                            <>
+                              <button
+                                onClick={() => handleApproveOrder(tx)}
+                                id={`approve-order-${tx.id}`}
+                                className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <CheckCircle2 size={16} />
+                                <span>Approve</span>
+                              </button>
 
-                            <button
-                              onClick={() => handleRejectOrder(tx.id)}
-                              id={`reject-order-${tx.id}`}
-                              className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                            >
-                              <XCircle size={16} />
-                              <span>Reject</span>
-                            </button>
-                          </div>
-                        )}
+                              <button
+                                onClick={() => handleRejectOrder(tx.id)}
+                                id={`reject-order-${tx.id}`}
+                                className="flex-1 sm:flex-initial bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs px-3.5 py-2.5 rounded-xl border border-rose-200 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <XCircle size={16} />
+                                <span>Reject</span>
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            onClick={() => handleDeleteOrder(tx.id)}
+                            id={`delete-order-${tx.id}`}
+                            className="bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-bold text-xs p-2.5 rounded-xl transition-all cursor-pointer"
+                            title="Delete Order Record"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -2552,6 +2572,15 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                             </button>
                           </>
                         )}
+
+                        <button
+                          onClick={() => handleDeleteOrder(tx.id)}
+                          id={`delete-deposit-${tx.id}`}
+                          className="bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-bold text-xs p-2 rounded-xl transition-all cursor-pointer"
+                          title="Delete Deposit Record"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
                   );

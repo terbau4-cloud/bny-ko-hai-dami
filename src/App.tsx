@@ -44,7 +44,14 @@ export default function App() {
       return true;
     }
   });
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_transactions');
+      return cached ? JSON.parse(cached) : INITIAL_TRANSACTIONS;
+    } catch {
+      return INITIAL_TRANSACTIONS;
+    }
+  });
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
@@ -166,34 +173,50 @@ export default function App() {
           unsubscribeTx = onSnapshot(
             q,
             (snapshot) => {
-              if (!snapshot.empty) {
-                const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
-                  const data = docSnap.data();
-                  return {
-                    id: docSnap.id,
-                    orderId: data.orderId,
-                    type: data.type || 'purchase',
-                    amount: data.amount || 0,
-                    date: data.date || 'Today',
-                    time: data.time || '',
-                    status: data.status || 'Pending',
-                    description: data.description || '',
-                    gameTitle: data.gameTitle,
-                    gameIcon: data.gameIcon,
-                    gameCoverImg: data.gameCoverImg,
-                    productName: data.productName,
-                    productPrice: data.productPrice,
-                    quantity: data.quantity,
-                    playerId: data.playerId,
-                    userEmail: data.userEmail || '',
-                    paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
-                    requirementsData: data.requirementsData || [],
-                    screenshotUrl: data.screenshotUrl,
-                    transactionCode: data.transactionCode || '',
-                  };
-                });
-                setTransactions(loadedTxs);
-              }
+              const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
+                const data = docSnap.data();
+                return {
+                  id: docSnap.id,
+                  orderId: data.orderId,
+                  type: data.type || 'purchase',
+                  amount: data.amount || 0,
+                  date: data.date || 'Today',
+                  time: data.time || '',
+                  status: data.status || 'Pending',
+                  description: data.description || '',
+                  gameTitle: data.gameTitle,
+                  gameIcon: data.gameIcon,
+                  gameCoverImg: data.gameCoverImg,
+                  productName: data.productName,
+                  productPrice: data.productPrice,
+                  quantity: data.quantity,
+                  playerId: data.playerId,
+                  userEmail: data.userEmail || '',
+                  paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
+                  requirementsData: data.requirementsData || [],
+                  screenshotUrl: data.screenshotUrl,
+                  transactionCode: data.transactionCode || '',
+                  createdAt: data.createdAt || '',
+                };
+              });
+
+              loadedTxs.sort((a, b) => {
+                const getTime = (tx: Transaction) => {
+                  if (tx.createdAt) {
+                    const t = new Date(tx.createdAt).getTime();
+                    if (!isNaN(t) && t > 0) return t;
+                  }
+                  if (tx.id && tx.id.startsWith('tx_')) {
+                    const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
+                    if (!isNaN(num) && num > 0) return num;
+                  }
+                  return 0;
+                };
+                return getTime(b) - getTime(a);
+              });
+
+              setTransactions(loadedTxs);
+              try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
             },
             (err) => {
               console.warn('Firestore transactions snapshot warning:', err?.message || err);

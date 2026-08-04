@@ -52,6 +52,7 @@ export interface Transaction {
   playerId?: string;
   userEmail?: string;
   requirementsData?: { name: string; value: string }[];
+  createdAt?: string;
 }
 
 export interface UserProfile {
