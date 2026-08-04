@@ -31,26 +31,23 @@ export default function App() {
   const [games, setGames] = useState<Game[]>(() => {
     try {
       const cached = localStorage.getItem('bny_games');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_GAMES;
   });
-  const [isGamesLoading, setIsGamesLoading] = useState<boolean>(() => {
-    try {
-      const cached = localStorage.getItem('bny_games');
-      return !cached;
-    } catch {
-      return true;
-    }
-  });
+  const [isGamesLoading, setIsGamesLoading] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const cached = localStorage.getItem('bny_transactions');
-      return cached ? JSON.parse(cached) : INITIAL_TRANSACTIONS;
-    } catch {
-      return INITIAL_TRANSACTIONS;
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_TRANSACTIONS;
   });
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -59,26 +56,32 @@ export default function App() {
   const [teamMembers, setTeamMembers] = useState<string[]>(() => {
     try {
       const cached = localStorage.getItem('bny_team_members');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
   });
   const [banners, setBanners] = useState<AppBanner[]>(() => {
     try {
       const cached = localStorage.getItem('bny_banners');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_BANNERS;
   });
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
       const cached = localStorage.getItem('bny_categories');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_CATEGORIES;
   });
 
   // Auth States

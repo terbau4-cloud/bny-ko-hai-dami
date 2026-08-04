@@ -25,7 +25,7 @@ export interface Game {
   bgGradient: string;
   plays: number;
   description: string;
-  gameType: 'memory' | 'balloon' | 'tictactoe' | 'whack' | 'snake';
+  gameType: 'topup' | 'memory' | 'balloon' | 'tictactoe' | 'whack' | 'snake';
   products?: TopupProduct[];
   requirements?: GameRequirement[];
 }

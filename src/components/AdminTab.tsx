@@ -60,9 +60,10 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
-  query
+  query,
+  limit,
 } from 'firebase/firestore';
-import { INITIAL_GAMES } from '../data/initialData';
+import { INITIAL_GAMES, INITIAL_CATEGORIES, INITIAL_BANNERS } from '../data/initialData';
 
 interface Props {
   adminEmail: string;
@@ -127,26 +128,32 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [usersList, setUsersList] = useState<UserProfile[]>(() => {
     try {
       const cached = localStorage.getItem('bny_admin_users');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
   });
   const [transactionsList, setTransactionsList] = useState<Transaction[]>(() => {
     try {
       const cached = localStorage.getItem('bny_admin_transactions');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
   });
   const [gamesList, setGamesList] = useState<Game[]>(() => {
     try {
       const cached = localStorage.getItem('bny_games');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_GAMES;
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -159,10 +166,12 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
     try {
       const cached = localStorage.getItem('bny_categories');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_CATEGORIES;
   });
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -173,10 +182,12 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [bannersList, setBannersList] = useState<AppBanner[]>(() => {
     try {
       const cached = localStorage.getItem('bny_banners');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_BANNERS;
   });
   const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>(() => {
     try {
@@ -408,7 +419,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
     // Listen for live updates on users
     const unsubscribeUsers = onSnapshot(
-      query(collection(db, 'users')),
+      query(collection(db, 'users'), limit(100)),
       (snapshot) => {
         const fetchedUsers: UserProfile[] = snapshot.docs.map((d) => {
           const data = d.data();
@@ -454,7 +465,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
     // Listen for live updates on transactions
     const unsubscribeTx = onSnapshot(
-      query(collection(db, 'transactions')),
+      query(collection(db, 'transactions'), limit(100)),
       (snapshot) => {
         const updatedTxs: Transaction[] = snapshot.docs.map((d) => {
           const data = d.data();
