@@ -153,6 +153,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
   const [selectedScreenshotTx, setSelectedScreenshotTx] = useState<Transaction | null>(null);
   const [copyToast, setCopyToast] = useState<string>('');
+  const [quotaNotice, setQuotaNotice] = useState<boolean>(false);
 
   // Categories state & modal
   const [categoriesList, setCategoriesList] = useState<Category[]>(() => {
@@ -177,7 +178,14 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       return [];
     }
   });
-  const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>([]);
+  const [teamMembersList, setTeamMembersList] = useState<TeamMember[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_team_members_list');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [paymentQRsList, setPaymentQRsList] = useState<PaymentQR[]>(() => {
     try {
       const cached = localStorage.getItem('bny_payment_qrs');
@@ -420,13 +428,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             blocked: Boolean(data.blocked),
           };
         });
-        setUsersList(fetchedUsers);
-        try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
+        if (fetchedUsers.length > 0) {
+          setUsersList(fetchedUsers);
+          try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
+        } else {
+          setUsersList((prev) => (prev.length > 0 ? prev : []));
+        }
         setLoading(false);
       },
       (err) => {
         console.warn('Admin live users listener warning:', err?.message || err);
+        if (err?.message?.includes('Quota') || err?.message?.includes('quota') || (err as any)?.code === 'resource-exhausted') {
+          setQuotaNotice(true);
+        }
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_admin_users');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setUsersList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -477,13 +499,27 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           return getTime(b) - getTime(a);
         });
 
-        setTransactionsList(updatedTxs);
-        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
+        if (updatedTxs.length > 0) {
+          setTransactionsList(updatedTxs);
+          try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
+        } else {
+          setTransactionsList((prev) => (prev.length > 0 ? prev : []));
+        }
         setLoading(false);
       },
       (err) => {
         console.warn('Admin live tx listener warning:', err?.message || err);
+        if (err?.message?.includes('Quota') || err?.message?.includes('quota') || (err as any)?.code === 'resource-exhausted') {
+          setQuotaNotice(true);
+        }
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_admin_transactions');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setTransactionsList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -516,7 +552,14 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             requirements: Array.isArray(data.requirements) ? data.requirements : [],
           };
         });
-        setGamesList(updatedGames);
+
+        if (updatedGames.length > 0) {
+          setGamesList(updatedGames);
+          try { localStorage.setItem('bny_games', JSON.stringify(updatedGames)); } catch {}
+        } else {
+          setGamesList((prev) => (prev.length > 0 ? prev : []));
+        }
+
         setSelectedAdminGame((prev) => {
           if (!prev) return null;
           const updated = updatedGames.find((g) => g.id === prev.id);
@@ -526,7 +569,17 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       },
       (err) => {
         console.warn('Admin live games listener warning:', err?.message || err);
+        if (err?.message?.includes('Quota') || err?.message?.includes('quota') || (err as any)?.code === 'resource-exhausted') {
+          setQuotaNotice(true);
+        }
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_games');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setGamesList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -546,11 +599,20 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         if (qrs.length > 0) {
           setPaymentQRsList(qrs);
           try { localStorage.setItem('bny_payment_qrs', JSON.stringify(qrs)); } catch {}
+        } else {
+          setPaymentQRsList((prev) => (prev.length > 0 ? prev : []));
         }
       },
       (err) => {
         console.warn('Admin live payment_qrs warning:', err?.message || 'Quota or network error');
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_payment_qrs');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setPaymentQRsList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -570,11 +632,20 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         if (bannersData.length > 0) {
           setBannersList(bannersData);
           try { localStorage.setItem('bny_banners', JSON.stringify(bannersData)); } catch {}
+        } else {
+          setBannersList((prev) => (prev.length > 0 ? prev : []));
         }
       },
       (err) => {
         console.warn('Admin live banners warning:', err?.message || 'Quota or network error');
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_banners');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setBannersList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -587,11 +658,23 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           email: d.data().email || '',
           createdAt: d.data().createdAt || '',
         }));
-        setTeamMembersList(list);
+        if (list.length > 0) {
+          setTeamMembersList(list);
+          try { localStorage.setItem('bny_team_members_list', JSON.stringify(list)); } catch {}
+        } else {
+          setTeamMembersList((prev) => (prev.length > 0 ? prev : []));
+        }
       },
       (err) => {
         console.warn('Admin live team_members warning:', err?.message || 'Quota or network error');
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_team_members_list');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setTeamMembersList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -607,11 +690,20 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         if (list.length > 0) {
           setCategoriesList(list);
           try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        } else {
+          setCategoriesList((prev) => (prev.length > 0 ? prev : []));
         }
       },
       (err) => {
         console.warn('Admin live categories warning:', err?.message || 'Quota or network error');
         setLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_categories');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setCategoriesList((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -1895,6 +1987,17 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       </AnimatePresence>
 
       <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+        {quotaNotice && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-900 text-xs sm:text-sm font-semibold flex items-center gap-3 shadow-2xs">
+            <AlertCircle className="shrink-0 text-amber-600" size={22} />
+            <div>
+              <p className="font-bold text-amber-900 text-sm">Firebase Daily Read Quota Reached</p>
+              <p className="text-amber-800 text-xs mt-0.5">
+                Today's Firebase daily free read limit (50,000 units) was reached. All your items, users, orders, games, and banners are safely preserved in local cache and live sync will resume automatically when quota resets.
+              </p>
+            </div>
+          </div>
+        )}
         {/* Top 3 Quick Stat Cards - Only visible on Overview */}
         {activeSection === 'overview' && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

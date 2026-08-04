@@ -56,7 +56,14 @@ export default function App() {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
 
   // Dynamic Banners, Categories and Team Members
-  const [teamMembers, setTeamMembers] = useState<string[]>([]);
+  const [teamMembers, setTeamMembers] = useState<string[]>(() => {
+    try {
+      const cached = localStorage.getItem('bny_team_members');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [banners, setBanners] = useState<AppBanner[]>(() => {
     try {
       const cached = localStorage.getItem('bny_banners');
@@ -215,11 +222,22 @@ export default function App() {
                 return getTime(b) - getTime(a);
               });
 
-              setTransactions(loadedTxs);
-              try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
+              if (loadedTxs.length > 0) {
+                setTransactions(loadedTxs);
+                try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
+              } else {
+                setTransactions((prev) => (prev.length > 0 ? prev : []));
+              }
             },
             (err) => {
               console.warn('Firestore transactions snapshot warning:', err?.message || err);
+              try {
+                const cached = localStorage.getItem('bny_transactions');
+                if (cached) {
+                  const parsed = JSON.parse(cached);
+                  if (parsed.length > 0) setTransactions((prev) => (prev.length === 0 ? parsed : prev));
+                }
+              } catch {}
             }
           );
         } else {
@@ -271,10 +289,15 @@ export default function App() {
             requirements: Array.isArray(data.requirements) ? data.requirements : [],
           };
         });
-        setGames(loadedGames);
-        try {
-          localStorage.setItem('bny_games', JSON.stringify(loadedGames));
-        } catch {}
+
+        if (loadedGames.length > 0) {
+          setGames(loadedGames);
+          try {
+            localStorage.setItem('bny_games', JSON.stringify(loadedGames));
+          } catch {}
+        } else {
+          setGames((prev) => (prev.length > 0 ? prev : []));
+        }
 
         // Update selected game if currently viewing detail page
         setSelectedGame((prev) => {
@@ -288,6 +311,13 @@ export default function App() {
       (err) => {
         console.warn('App live games listener warning:', err?.message || err);
         setIsGamesLoading(false);
+        try {
+          const cached = localStorage.getItem('bny_games');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setGames((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -300,10 +330,22 @@ export default function App() {
       collection(db, 'team_members'),
       (snap) => {
         const emails = snap.docs.map((d) => d.data().email).filter(Boolean);
-        setTeamMembers(emails);
+        if (emails.length > 0) {
+          setTeamMembers(emails);
+          try { localStorage.setItem('bny_team_members', JSON.stringify(emails)); } catch {}
+        } else {
+          setTeamMembers((prev) => (prev.length > 0 ? prev : []));
+        }
       },
       (err) => {
         console.warn('Firestore team_members snapshot warning:', err?.message || err);
+        try {
+          const cached = localStorage.getItem('bny_team_members');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setTeamMembers((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -316,11 +358,22 @@ export default function App() {
           redirectLink: d.data().redirectLink || '',
           createdAt: d.data().createdAt || '',
         }));
-        setBanners(list);
-        try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
+        if (list.length > 0) {
+          setBanners(list);
+          try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
+        } else {
+          setBanners((prev) => (prev.length > 0 ? prev : []));
+        }
       },
       (err) => {
         console.warn('Firestore banners snapshot warning:', err?.message || err);
+        try {
+          const cached = localStorage.getItem('bny_banners');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setBanners((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
@@ -332,11 +385,22 @@ export default function App() {
           name: d.data().name || '',
           createdAt: d.data().createdAt || '',
         }));
-        setCategories(list);
-        try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        if (list.length > 0) {
+          setCategories(list);
+          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+        } else {
+          setCategories((prev) => (prev.length > 0 ? prev : []));
+        }
       },
       (err) => {
         console.warn('Firestore categories snapshot warning:', err?.message || err);
+        try {
+          const cached = localStorage.getItem('bny_categories');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.length > 0) setCategories((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        } catch {}
       }
     );
 
