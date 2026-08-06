@@ -408,26 +408,25 @@ export default function App() {
 
     setTransactions((prev) => [newTx, ...prev]);
 
-    // Firestore sync if user is logged in
-    if (authUser) {
-      try {
-        await addDoc(collection(db, 'transactions'), {
-          userId: authUser.uid,
-          userEmail,
-          orderId,
-          type: 'deposit',
-          amount,
-          date: 'Just Now',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: 'Pending',
-          description: `Wallet Deposit (${qrTitle})`,
-          paymentQrTitle: qrTitle,
-          transactionCode: cleanTxCode,
-          createdAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.warn('Error adding deposit to Firestore:', err);
-      }
+    // Always write deposit transaction to Firestore
+    const userId = authUser?.uid || profile.uid || 'guest_user';
+    try {
+      await addDoc(collection(db, 'transactions'), {
+        userId,
+        userEmail,
+        orderId,
+        type: 'deposit',
+        amount,
+        date: 'Just Now',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'Pending',
+        description: `Wallet Deposit (${qrTitle})`,
+        paymentQrTitle: qrTitle,
+        transactionCode: cleanTxCode,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn('Error adding deposit to Firestore:', err);
     }
   };
 
@@ -481,39 +480,40 @@ export default function App() {
       totalSpent: updatedSpent,
     }));
 
-    // Firestore sync if user is logged in
-    if (authUser) {
-      try {
-        await addDoc(collection(db, 'transactions'), {
-          userId: authUser.uid,
-          userEmail,
-          orderId,
-          type: 'purchase',
-          amount: totalAmount,
-          date: 'Today',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: 'Pending',
-          description: `${product.name} x ${quantity}`,
-          gameId: game.id,
-          gameTitle: game.title,
-          gameIcon: game.icon,
-          gameCoverImg: game.coverImg || '',
-          productName: product.name,
-          productPrice: product.price,
-          quantity,
-          playerId,
-          requirementsData: requirementsData || [],
-          createdAt: new Date().toISOString(),
-        });
+    // Always write purchase order transaction to Firestore
+    const userId = authUser?.uid || profile.uid || 'guest_user';
+    try {
+      await addDoc(collection(db, 'transactions'), {
+        userId,
+        userEmail,
+        orderId,
+        type: 'purchase',
+        amount: totalAmount,
+        date: 'Today',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'Pending',
+        description: `${product.name} x ${quantity}`,
+        gameId: game.id,
+        gameTitle: game.title,
+        gameIcon: game.icon,
+        gameCoverImg: game.coverImg || '',
+        productName: product.name,
+        productPrice: product.price,
+        quantity,
+        playerId,
+        requirementsData: requirementsData || [],
+        createdAt: new Date().toISOString(),
+      });
 
-        const userDocRef = doc(db, 'users', authUser.uid);
+      if (userId && userId !== 'guest_user') {
+        const userDocRef = doc(db, 'users', userId);
         await updateDoc(userDocRef, {
           walletBalance: updatedBalance,
           totalSpent: updatedSpent,
-        });
-      } catch (err) {
-        console.warn('Error adding purchase order to Firestore:', err);
+        }).catch(() => {});
       }
+    } catch (err) {
+      console.warn('Error adding purchase order to Firestore:', err);
     }
 
     // Clear selected game and go to history tab

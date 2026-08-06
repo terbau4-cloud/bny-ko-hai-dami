@@ -413,9 +413,9 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [bulkListInput, setBulkListInput] = useState<string>('');
   const [bulkImportLoading, setBulkImportLoading] = useState<boolean>(false);
 
-  // Cache-first initial state + automatic fresh sync for Users & Transactions
+  // Live real-time Firestore listeners for Admin Panel
   useEffect(() => {
-    // Populate state from localStorage on mount
+    // Populate state from localStorage on mount first
     try {
       const cachedUsers = localStorage.getItem('bny_admin_users');
       if (cachedUsers) setUsersList(JSON.parse(cachedUsers));
@@ -442,43 +442,17 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
     setLoading(false);
 
-    // Fetch fresh Users & Transactions from Firestore to guarantee exact balance match
-    async function loadFreshAdminData() {
-      try {
-        // 1. Users
-        const snapUsers = await getDocs(query(collection(db, 'users'), limit(150)));
-        const fetchedUsers: UserProfile[] = snapUsers.docs.map((d) => {
-          const data = d.data();
-          return {
-            uid: d.id,
-            name: data.fullName || data.name || 'Gamer User',
-            email: data.email || '',
-            whatsapp: data.whatsapp || '',
-            avatar: '👤',
-            level: 1,
-            coins: 100,
-            walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : parseFloat(data.walletBalance) || 0,
-            totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : parseFloat(data.totalSpent) || 0,
-            totalGamesPlayed: 0,
-            soundEnabled: true,
-            themeColor: 'purple',
-            blocked: Boolean(data.blocked),
-          };
-        });
-        if (fetchedUsers.length > 0) {
-          setUsersList(fetchedUsers);
-          try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
-        }
-
-        // 2. Transactions
-        const snapTx = await getDocs(query(collection(db, 'transactions'), limit(150)));
-        const updatedTxs: Transaction[] = snapTx.docs.map((d) => {
+    // 1. Live listener for Transactions (Deposits & Purchase Orders)
+    const unsubTx = onSnapshot(
+      query(collection(db, 'transactions'), limit(300)),
+      (snapshot) => {
+        const updatedTxs: Transaction[] = snapshot.docs.map((d) => {
           const data = d.data();
           return {
             id: d.id,
             orderId: data.orderId || d.id.substring(0, 10),
             type: data.type || 'purchase',
-            amount: data.amount || 0,
+            amount: typeof data.amount === 'number' ? data.amount : parseFloat(data.amount) || 0,
             date: data.date || 'Today',
             time: data.time || '',
             status: data.status || 'Pending',
@@ -514,16 +488,86 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           return getTime(b) - getTime(a);
         });
 
-        if (updatedTxs.length > 0) {
-          setTransactionsList(updatedTxs);
-          try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
-        }
-      } catch (err) {
-        console.warn('Load fresh admin data warning:', err);
+        setTransactionsList(updatedTxs);
+        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
+      },
+      (err) => {
+        console.warn('Admin live transactions listener error:', err);
       }
-    }
+    );
 
-    loadFreshAdminData();
+    // 2. Live listener for Users
+    const unsubUsers = onSnapshot(
+      query(collection(db, 'users'), limit(300)),
+      (snapshot) => {
+        const fetchedUsers: UserProfile[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            uid: d.id,
+            name: data.fullName || data.name || 'Gamer User',
+            email: data.email || '',
+            whatsapp: data.whatsapp || '',
+            avatar: '👤',
+            level: 1,
+            coins: 100,
+            walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : parseFloat(data.walletBalance) || 0,
+            totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : parseFloat(data.totalSpent) || 0,
+            totalGamesPlayed: 0,
+            soundEnabled: true,
+            themeColor: 'purple',
+            blocked: Boolean(data.blocked),
+          };
+        });
+        setUsersList(fetchedUsers);
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
+      },
+      (err) => {
+        console.warn('Admin live users listener error:', err);
+      }
+    );
+
+    // 3. Live listener for Games
+    const unsubGames = onSnapshot(
+      collection(db, 'games'),
+      (snapshot) => {
+        const updatedGames: Game[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            title: data.title || 'Untitled Game',
+            publisher: data.publisher || '',
+            category: data.category || 'action',
+            rating: data.rating || 4.8,
+            icon: data.icon || '🎮',
+            coverImg: data.coverImg || '',
+            color: data.color || 'from-indigo-600 to-purple-600',
+            bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
+            plays: data.plays || 100,
+            description: data.description || '',
+            gameType: data.gameType || 'topup',
+            products: Array.isArray(data.products)
+              ? data.products.map((p: any, idx: number) => ({
+                  id: p.id || `prod_${idx}`,
+                  name: p.name || 'Package',
+                  price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+                }))
+              : [],
+            requirements: Array.isArray(data.requirements) ? data.requirements : [],
+          };
+        });
+        setGamesList(updatedGames);
+        try { localStorage.setItem('bny_games', JSON.stringify(updatedGames)); } catch {}
+      },
+      (err) => {
+        console.warn('Admin live games listener error:', err);
+      }
+    );
+
+    return () => {
+      unsubTx();
+      unsubUsers();
+      unsubGames();
+    };
   }, []);
 
   const handleSyncCloudData = async () => {
