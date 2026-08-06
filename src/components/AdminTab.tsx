@@ -1525,14 +1525,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             </div>
           </div>
 
-          <button
-            onClick={handleSyncCloudData}
-            id="admin-refresh-btn"
-            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold px-3 py-2 rounded-xl border border-indigo-200 transition-all cursor-pointer shadow-2xs"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Sync Cloud Data</span>
-          </button>
+
         </div>
       </header>
 
