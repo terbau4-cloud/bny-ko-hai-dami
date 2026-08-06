@@ -139,57 +139,55 @@ export default function App() {
             }
           } catch {}
 
-          // Single background fetch for user document ONLY if profile is not cached
-          if (!hasCachedProfile) {
-            try {
-              const userDocRef = doc(db, 'users', user.uid);
-              const userSnap = await getDoc(userDocRef);
+          // Single background fetch for user document to keep balance & status synced with Admin
+          try {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userSnap = await getDoc(userDocRef);
 
-              if (userSnap.exists()) {
-                if (userSnap.data()?.isDeleted === true) {
-                  signOut(auth).catch(() => {});
-                  setAuthUser(null);
-                  setProfile(INITIAL_PROFILE);
-                  alert('Your account has been deleted by Admin. You have been logged out.');
-                  return;
-                }
-                const data = userSnap.data();
-                const updatedProf: UserProfile = {
-                  uid: user.uid,
-                  name: data.fullName || data.name || user.displayName || 'BNY Gamer',
-                  email: data.email || user.email || '',
-                  whatsapp: data.whatsapp || '',
-                  avatar: '👤',
-                  level: 1,
-                  coins: 100,
-                  walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
-                  totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
-                  totalGamesPlayed: 0,
-                  soundEnabled: true,
-                  themeColor: 'purple',
-                  blocked: !!data.blocked,
-                };
-                setProfile(updatedProf);
-                try { localStorage.setItem(`bny_profile_${user.uid}`, JSON.stringify(updatedProf)); } catch {}
-              } else {
-                // Auto create user doc if missing
-                try {
-                  await setDoc(userDocRef, {
-                    uid: user.uid,
-                    fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
-                    email: user.email || '',
-                    whatsapp: '',
-                    walletBalance: 0,
-                    totalSpent: 0,
-                    createdAt: new Date().toISOString(),
-                  }, { merge: true });
-                } catch (err) {
-                  console.warn('Auto create user doc error:', err);
-                }
+            if (userSnap.exists()) {
+              if (userSnap.data()?.isDeleted === true) {
+                signOut(auth).catch(() => {});
+                setAuthUser(null);
+                setProfile(INITIAL_PROFILE);
+                alert('Your account has been deleted by Admin. You have been logged out.');
+                return;
               }
-            } catch (err) {
-              console.warn('Fetch user doc warning (using local profile):', err);
+              const data = userSnap.data();
+              const updatedProf: UserProfile = {
+                uid: user.uid,
+                name: data.fullName || data.name || user.displayName || 'BNY Gamer',
+                email: data.email || user.email || '',
+                whatsapp: data.whatsapp || '',
+                avatar: '👤',
+                level: 1,
+                coins: 100,
+                walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : parseFloat(data.walletBalance) || 0,
+                totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : parseFloat(data.totalSpent) || 0,
+                totalGamesPlayed: 0,
+                soundEnabled: true,
+                themeColor: 'purple',
+                blocked: !!data.blocked,
+              };
+              setProfile(updatedProf);
+              try { localStorage.setItem(`bny_profile_${user.uid}`, JSON.stringify(updatedProf)); } catch {}
+            } else {
+              // Auto create user doc if missing
+              try {
+                await setDoc(userDocRef, {
+                  uid: user.uid,
+                  fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
+                  email: user.email || '',
+                  whatsapp: '',
+                  walletBalance: 0,
+                  totalSpent: 0,
+                  createdAt: new Date().toISOString(),
+                }, { merge: true });
+              } catch (err) {
+                console.warn('Auto create user doc error:', err);
+              }
             }
+          } catch (err) {
+            console.warn('Fetch user doc warning (using local profile):', err);
           }
 
           // Single fetch for user transactions ONLY if transactions are not cached
