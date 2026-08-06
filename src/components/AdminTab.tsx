@@ -413,9 +413,9 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [bulkListInput, setBulkListInput] = useState<string>('');
   const [bulkImportLoading, setBulkImportLoading] = useState<boolean>(false);
 
-  // Cache-first initial state & manual cloud sync handler
+  // Cache-first initial state + automatic fresh sync for Users & Transactions
   useEffect(() => {
-    // Populate state from localStorage on mount - ZERO READS ON PANEL OPEN!
+    // Populate state from localStorage on mount
     try {
       const cachedUsers = localStorage.getItem('bny_admin_users');
       if (cachedUsers) setUsersList(JSON.parse(cachedUsers));
@@ -441,6 +441,89 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       console.warn('Error reading local cache in AdminTab:', e);
     }
     setLoading(false);
+
+    // Fetch fresh Users & Transactions from Firestore to guarantee exact balance match
+    async function loadFreshAdminData() {
+      try {
+        // 1. Users
+        const snapUsers = await getDocs(query(collection(db, 'users'), limit(150)));
+        const fetchedUsers: UserProfile[] = snapUsers.docs.map((d) => {
+          const data = d.data();
+          return {
+            uid: d.id,
+            name: data.fullName || data.name || 'Gamer User',
+            email: data.email || '',
+            whatsapp: data.whatsapp || '',
+            avatar: '👤',
+            level: 1,
+            coins: 100,
+            walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : parseFloat(data.walletBalance) || 0,
+            totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : parseFloat(data.totalSpent) || 0,
+            totalGamesPlayed: 0,
+            soundEnabled: true,
+            themeColor: 'purple',
+            blocked: Boolean(data.blocked),
+          };
+        });
+        if (fetchedUsers.length > 0) {
+          setUsersList(fetchedUsers);
+          try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
+        }
+
+        // 2. Transactions
+        const snapTx = await getDocs(query(collection(db, 'transactions'), limit(150)));
+        const updatedTxs: Transaction[] = snapTx.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            orderId: data.orderId || d.id.substring(0, 10),
+            type: data.type || 'purchase',
+            amount: data.amount || 0,
+            date: data.date || 'Today',
+            time: data.time || '',
+            status: data.status || 'Pending',
+            description: data.description || '',
+            gameId: data.gameId,
+            gameTitle: data.gameTitle,
+            gameIcon: data.gameIcon,
+            productName: data.productName,
+            productPrice: data.productPrice,
+            quantity: data.quantity,
+            playerId: data.playerId,
+            userEmail: data.userEmail || '',
+            paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
+            requirementsData: data.requirementsData || [],
+            screenshotUrl: data.screenshotUrl,
+            transactionCode: data.transactionCode || '',
+            createdAt: data.createdAt || '',
+          };
+        });
+
+        updatedTxs.sort((a, b) => {
+          const getTime = (tx: Transaction) => {
+            if (tx.createdAt) {
+              const t = new Date(tx.createdAt).getTime();
+              if (!isNaN(t) && t > 0) return t;
+            }
+            if (tx.id && tx.id.startsWith('tx_')) {
+              const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
+              if (!isNaN(num) && num > 0) return num;
+            }
+            return 0;
+          };
+          return getTime(b) - getTime(a);
+        });
+
+        if (updatedTxs.length > 0) {
+          setTransactionsList(updatedTxs);
+          try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
+        }
+      } catch (err) {
+        console.warn('Load fresh admin data warning:', err);
+      }
+    }
+
+    loadFreshAdminData();
   }, []);
 
   const handleSyncCloudData = async () => {
@@ -736,13 +819,21 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
 
     try {
-      const currentBal = addBalanceUser.walletBalance || 0;
+      const userRef = doc(db, 'users', addBalanceUser.uid);
+      const userSnap = await getDoc(userRef);
+      let currentBal = addBalanceUser.walletBalance || 0;
+      if (userSnap.exists()) {
+        const uData = userSnap.data();
+        currentBal = typeof uData.walletBalance === 'number' ? uData.walletBalance : parseFloat(uData.walletBalance) || 0;
+      }
       const newBal = currentBal + amountToAdd;
-      await updateDoc(doc(db, 'users', addBalanceUser.uid), { walletBalance: newBal });
+      await updateDoc(userRef, { walletBalance: newBal });
 
-      setUsersList((prev) =>
-        prev.map((u) => (u.uid === addBalanceUser.uid ? { ...u, walletBalance: newBal } : u))
-      );
+      setUsersList((prev) => {
+        const next = prev.map((u) => (u.uid === addBalanceUser.uid ? { ...u, walletBalance: newBal } : u));
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(next)); } catch {}
+        return next;
+      });
 
       setAddBalanceSuccess(`Added RS ${amountToAdd} to ${addBalanceUser.name}!`);
       setTimeout(() => {
@@ -763,7 +854,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
     try {
       await deleteDoc(doc(db, 'users', user.uid));
-      setUsersList((prev) => prev.filter((u) => u.uid !== user.uid));
+      setUsersList((prev) => {
+        const next = prev.filter((u) => u.uid !== user.uid);
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(next)); } catch {}
+        return next;
+      });
     } catch (err) {
       console.error('Error deleting user:', err);
       alert('Failed to delete user.');
@@ -777,9 +872,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
     try {
       await updateDoc(doc(db, 'users', user.uid), { blocked: newBlocked });
-      setUsersList((prev) =>
-        prev.map((u) => (u.uid === user.uid ? { ...u, blocked: newBlocked } : u))
-      );
+      setUsersList((prev) => {
+        const next = prev.map((u) => (u.uid === user.uid ? { ...u, blocked: newBlocked } : u));
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(next)); } catch {}
+        return next;
+      });
     } catch (err) {
       console.error('Error toggling block state:', err);
       alert('Failed to update block state.');
@@ -796,9 +893,11 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       const userRef = doc(db, 'users', adjustingUser.uid);
       await updateDoc(userRef, { walletBalance: num });
 
-      setUsersList((prev) =>
-        prev.map((u) => (u.uid === adjustingUser.uid ? { ...u, walletBalance: num } : u))
-      );
+      setUsersList((prev) => {
+        const next = prev.map((u) => (u.uid === adjustingUser.uid ? { ...u, walletBalance: num } : u));
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(next)); } catch {}
+        return next;
+      });
 
       setAdjustSuccess(`Balance for ${adjustingUser.name} updated to RS ${num}!`);
       setTimeout(() => {
