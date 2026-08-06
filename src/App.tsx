@@ -17,10 +17,11 @@ import {
   collection,
   query,
   where,
-  onSnapshot,
   addDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
   updateDoc,
   setDoc,
 } from 'firebase/firestore';
@@ -98,60 +99,46 @@ export default function App() {
   }, []);
 
 
-  // Listen for Firebase Auth state changes & real-time user profile
+  // Firebase Auth state change & cache-first user profile/transactions
   useEffect(() => {
-    let unsubscribeTx: (() => void) | null = null;
-    let unsubscribeUserDoc: (() => void) | null = null;
-
     const unsubscribeAuth = onAuthStateChanged(
       auth,
       async (user) => {
-        if (unsubscribeTx) {
-          unsubscribeTx();
-          unsubscribeTx = null;
-        }
-        if (unsubscribeUserDoc) {
-          unsubscribeUserDoc();
-          unsubscribeUserDoc = null;
-        }
-
         setAuthUser(user);
         setAuthChecking(false);
 
         if (user) {
-          // Subscribe to user profile document in Firestore in real-time
-          const userDocRef = doc(db, 'users', user.uid);
-          unsubscribeUserDoc = onSnapshot(
-            userDocRef,
-            async (userSnap) => {
-              if (userSnap.exists() && userSnap.data()?.isDeleted === true) {
+          // Restore user profile from cache first
+          try {
+            const cachedProfile = localStorage.getItem(`bny_profile_${user.uid}`);
+            if (cachedProfile) {
+              const parsed = JSON.parse(cachedProfile);
+              setProfile(parsed);
+            } else {
+              setProfile((prev) => ({
+                ...prev,
+                uid: user.uid,
+                name: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
+                email: user.email || '',
+              }));
+            }
+          } catch {}
+
+          // Single background fetch for user document
+          try {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userSnap = await getDoc(userDocRef);
+
+            if (userSnap.exists()) {
+              if (userSnap.data()?.isDeleted === true) {
                 signOut(auth).catch(() => {});
                 setAuthUser(null);
                 setProfile(INITIAL_PROFILE);
                 alert('Your account has been deleted by Admin. You have been logged out.');
                 return;
               }
-
-              if (!userSnap.exists()) {
-                // Document does not exist in Firestore yet: auto-create it so user appears in admin list
-                try {
-                  await setDoc(userDocRef, {
-                    uid: user.uid,
-                    fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
-                    email: user.email || '',
-                    whatsapp: '',
-                    walletBalance: 0,
-                    totalSpent: 0,
-                    createdAt: new Date().toISOString(),
-                  }, { merge: true });
-                } catch (err) {
-                  console.warn('Auto create user doc error:', err);
-                }
-                return;
-              }
-
               const data = userSnap.data();
-              setProfile({
+              const updatedProf: UserProfile = {
                 uid: user.uid,
                 name: data.fullName || data.name || user.displayName || 'BNY Gamer',
                 email: data.email || user.email || '',
@@ -165,88 +152,85 @@ export default function App() {
                 soundEnabled: true,
                 themeColor: 'purple',
                 blocked: !!data.blocked,
-              });
-            },
-            (err) => {
-              console.warn('User doc snapshot warning:', err?.message || err);
-              setProfile((prev) => ({
-                ...prev,
-                uid: user.uid,
-                name: user.displayName || user.email?.split('@')[0] || 'Gamer User',
-                email: user.email || '',
-              }));
-            }
-          );
-
-          // Listen to Firestore transactions for this user
-          const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-          unsubscribeTx = onSnapshot(
-            q,
-            (snapshot) => {
-              const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                return {
-                  id: docSnap.id,
-                  orderId: data.orderId,
-                  type: data.type || 'purchase',
-                  amount: data.amount || 0,
-                  date: data.date || 'Today',
-                  time: data.time || '',
-                  status: data.status || 'Pending',
-                  description: data.description || '',
-                  gameTitle: data.gameTitle,
-                  gameIcon: data.gameIcon,
-                  gameCoverImg: data.gameCoverImg,
-                  productName: data.productName,
-                  productPrice: data.productPrice,
-                  quantity: data.quantity,
-                  playerId: data.playerId,
-                  userEmail: data.userEmail || '',
-                  paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
-                  requirementsData: data.requirementsData || [],
-                  screenshotUrl: data.screenshotUrl,
-                  transactionCode: data.transactionCode || '',
-                  createdAt: data.createdAt || '',
-                };
-              });
-
-              loadedTxs.sort((a, b) => {
-                const getTime = (tx: Transaction) => {
-                  if (tx.createdAt) {
-                    const t = new Date(tx.createdAt).getTime();
-                    if (!isNaN(t) && t > 0) return t;
-                  }
-                  if (tx.id && tx.id.startsWith('tx_')) {
-                    const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
-                    if (!isNaN(num) && num > 0) return num;
-                  }
-                  return 0;
-                };
-                return getTime(b) - getTime(a);
-              });
-
-              if (loadedTxs.length > 0) {
-                setTransactions(loadedTxs);
-                try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
-              } else {
-                setTransactions((prev) => (prev.length > 0 ? prev : []));
-              }
-            },
-            (err) => {
-              console.warn('Firestore transactions snapshot warning:', err?.message || err);
+              };
+              setProfile(updatedProf);
+              try { localStorage.setItem(`bny_profile_${user.uid}`, JSON.stringify(updatedProf)); } catch {}
+            } else {
+              // Auto create user doc if missing
               try {
-                const cached = localStorage.getItem('bny_transactions');
-                if (cached) {
-                  const parsed = JSON.parse(cached);
-                  if (parsed.length > 0) setTransactions((prev) => (prev.length === 0 ? parsed : prev));
-                }
-              } catch {}
+                await setDoc(userDocRef, {
+                  uid: user.uid,
+                  fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
+                  email: user.email || '',
+                  whatsapp: '',
+                  walletBalance: 0,
+                  totalSpent: 0,
+                  createdAt: new Date().toISOString(),
+                }, { merge: true });
+              } catch (err) {
+                console.warn('Auto create user doc error:', err);
+              }
             }
-          );
+          } catch (err) {
+            console.warn('Fetch user doc warning (using local profile):', err);
+          }
+
+          // Single fetch for user transactions
+          try {
+            const q = query(collection(db, 'transactions'), where('userId', '==', user.uid), limit(30));
+            const snapshot = await getDocs(q);
+            const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
+              const data = docSnap.data();
+              return {
+                id: docSnap.id,
+                orderId: data.orderId,
+                type: data.type || 'purchase',
+                amount: data.amount || 0,
+                date: data.date || 'Today',
+                time: data.time || '',
+                status: data.status || 'Pending',
+                description: data.description || '',
+                gameTitle: data.gameTitle,
+                gameIcon: data.gameIcon,
+                gameCoverImg: data.gameCoverImg,
+                productName: data.productName,
+                productPrice: data.productPrice,
+                quantity: data.quantity,
+                playerId: data.playerId,
+                userEmail: data.userEmail || '',
+                paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
+                requirementsData: data.requirementsData || [],
+                screenshotUrl: data.screenshotUrl,
+                transactionCode: data.transactionCode || '',
+                createdAt: data.createdAt || '',
+              };
+            });
+
+            loadedTxs.sort((a, b) => {
+              const getTime = (tx: Transaction) => {
+                if (tx.createdAt) {
+                  const t = new Date(tx.createdAt).getTime();
+                  if (!isNaN(t) && t > 0) return t;
+                }
+                if (tx.id && tx.id.startsWith('tx_')) {
+                  const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
+                  if (!isNaN(num) && num > 0) return num;
+                }
+                return 0;
+              };
+              return getTime(b) - getTime(a);
+            });
+
+            if (loadedTxs.length > 0) {
+              setTransactions(loadedTxs);
+              try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
+            }
+          } catch (err) {
+            console.warn('Fetch user transactions warning (using local transactions):', err);
+          }
         } else {
           setProfile(INITIAL_PROFILE);
         }
-        setAuthChecking(false);
       },
       (err) => {
         console.warn('Auth state listener error:', err?.message || err);
@@ -254,19 +238,27 @@ export default function App() {
       }
     );
 
-    return () => {
-      if (unsubscribeTx) unsubscribeTx();
-      if (unsubscribeUserDoc) unsubscribeUserDoc();
-      unsubscribeAuth();
-    };
+    return () => unsubscribeAuth();
   }, []);
 
-  // Listen for real-time updates to games collection in Firestore
+  // Fetch games ONCE only if local storage is completely empty
   useEffect(() => {
-    const qGames = query(collection(db, 'games'));
-    const unsubscribeGames = onSnapshot(
-      qGames,
-      (snapshot) => {
+    const cachedGames = localStorage.getItem('bny_games');
+    if (cachedGames) {
+      try {
+        const parsed = JSON.parse(cachedGames);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setGames(parsed);
+          setIsGamesLoading(false);
+          return; // ZERO READS on app open!
+        }
+      } catch {}
+    }
+
+    // Single fetch if no cached games
+    async function loadGamesOnce() {
+      try {
+        const snapshot = await getDocs(query(collection(db, 'games')));
         const loadedGames: Game[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
           return {
@@ -281,7 +273,7 @@ export default function App() {
             bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
             plays: data.plays || 100,
             description: data.description || '',
-            gameType: data.gameType || 'balloon',
+            gameType: data.gameType || 'topup',
             products: Array.isArray(data.products)
               ? data.products.map((p: any, idx: number) => ({
                   id: p.id || `prod_${idx}`,
@@ -295,123 +287,74 @@ export default function App() {
 
         if (loadedGames.length > 0) {
           setGames(loadedGames);
-          try {
-            localStorage.setItem('bny_games', JSON.stringify(loadedGames));
-          } catch {}
-        } else {
-          setGames((prev) => (prev.length > 0 ? prev : []));
+          try { localStorage.setItem('bny_games', JSON.stringify(loadedGames)); } catch {}
         }
-
-        // Update selected game if currently viewing detail page
-        setSelectedGame((prev) => {
-          if (!prev) return null;
-          const updated = loadedGames.find((g) => g.id === prev.id);
-          return updated || prev;
-        });
-
+      } catch (err) {
+        console.warn('Load games error (using default games):', err);
+      } finally {
         setIsGamesLoading(false);
-      },
-      (err) => {
-        console.warn('App live games listener warning:', err?.message || err);
-        setIsGamesLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_games');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setGames((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
       }
-    );
+    }
 
-    return () => unsubscribeGames();
+    loadGamesOnce();
   }, []);
 
-  // Listen for team_members, banners and categories
+  // Fetch team_members, banners, categories ONCE only if cached storage is empty
   useEffect(() => {
-    const unsubMembers = onSnapshot(
-      collection(db, 'team_members'),
-      (snap) => {
-        const emails = snap.docs.map((d) => d.data().email).filter(Boolean);
-        if (emails.length > 0) {
-          setTeamMembers(emails);
-          try { localStorage.setItem('bny_team_members', JSON.stringify(emails)); } catch {}
-        } else {
-          setTeamMembers((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Firestore team_members snapshot warning:', err?.message || err);
-        try {
-          const cached = localStorage.getItem('bny_team_members');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setTeamMembers((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
+    const cachedBanners = localStorage.getItem('bny_banners');
+    const cachedCategories = localStorage.getItem('bny_categories');
+    const cachedMembers = localStorage.getItem('bny_team_members');
 
-    const unsubBanners = onSnapshot(
-      collection(db, 'banners'),
-      (snap) => {
-        const list: AppBanner[] = snap.docs.map((d) => ({
-          id: d.id,
-          imageUrl: d.data().imageUrl || '',
-          redirectLink: d.data().redirectLink || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        if (list.length > 0) {
-          setBanners(list);
-          try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
-        } else {
-          setBanners((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Firestore banners snapshot warning:', err?.message || err);
-        try {
-          const cached = localStorage.getItem('bny_banners');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setBanners((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
+    if (cachedBanners && cachedCategories && cachedMembers) {
+      // All present in cache - ZERO READS on app open!
+      return;
+    }
 
-    const unsubCategories = onSnapshot(
-      collection(db, 'categories'),
-      (snap) => {
-        const list: Category[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        if (list.length > 0) {
-          setCategories(list);
-          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
-        } else {
-          setCategories((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Firestore categories snapshot warning:', err?.message || err);
-        try {
-          const cached = localStorage.getItem('bny_categories');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setCategories((prev) => (prev.length === 0 ? parsed : prev));
+    async function loadPublicDataOnce() {
+      try {
+        if (!cachedMembers) {
+          const snapMembers = await getDocs(collection(db, 'team_members'));
+          const emails = snapMembers.docs.map((d) => d.data().email).filter(Boolean);
+          if (emails.length > 0) {
+            setTeamMembers(emails);
+            try { localStorage.setItem('bny_team_members', JSON.stringify(emails)); } catch {}
           }
-        } catch {}
-      }
-    );
+        }
+      } catch (e) {}
 
-    return () => {
-      unsubMembers();
-      unsubBanners();
-      unsubCategories();
-    };
+      try {
+        if (!cachedBanners) {
+          const snapBanners = await getDocs(collection(db, 'banners'));
+          const list: AppBanner[] = snapBanners.docs.map((d) => ({
+            id: d.id,
+            imageUrl: d.data().imageUrl || '',
+            redirectLink: d.data().redirectLink || '',
+            createdAt: d.data().createdAt || '',
+          }));
+          if (list.length > 0) {
+            setBanners(list);
+            try { localStorage.setItem('bny_banners', JSON.stringify(list)); } catch {}
+          }
+        }
+      } catch (e) {}
+
+      try {
+        if (!cachedCategories) {
+          const snapCategories = await getDocs(collection(db, 'categories'));
+          const list: Category[] = snapCategories.docs.map((d) => ({
+            id: d.id,
+            name: d.data().name || '',
+            createdAt: d.data().createdAt || '',
+          }));
+          if (list.length > 0) {
+            setCategories(list);
+            try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
+          }
+        }
+      } catch (e) {}
+    }
+
+    loadPublicDataOnce();
   }, []);
 
   // Handle Auth Success from AuthModal

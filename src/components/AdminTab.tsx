@@ -413,321 +413,156 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
   const [bulkListInput, setBulkListInput] = useState<string>('');
   const [bulkImportLoading, setBulkImportLoading] = useState<boolean>(false);
 
-  // Single consolidated Firestore listener effect
+  // Cache-first initial state & manual cloud sync handler
   useEffect(() => {
-    setLoading(true);
+    // Populate state from localStorage on mount - ZERO READS ON PANEL OPEN!
+    try {
+      const cachedUsers = localStorage.getItem('bny_admin_users');
+      if (cachedUsers) setUsersList(JSON.parse(cachedUsers));
 
-    // Listen for live updates on users
-    const unsubscribeUsers = onSnapshot(
-      query(collection(db, 'users'), limit(100)),
-      (snapshot) => {
-        const fetchedUsers: UserProfile[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            uid: d.id,
-            name: data.fullName || data.name || 'Gamer User',
-            email: data.email || '',
-            whatsapp: data.whatsapp || '',
-            avatar: '👤',
-            level: 1,
-            coins: 100,
-            walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
-            totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
-            totalGamesPlayed: 0,
-            soundEnabled: true,
-            themeColor: 'purple',
-            blocked: Boolean(data.blocked),
-          };
-        });
-        if (fetchedUsers.length > 0) {
-          setUsersList(fetchedUsers);
-          try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
-        } else {
-          setUsersList((prev) => (prev.length > 0 ? prev : []));
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('Admin live users listener warning:', err?.message || err);
-        if (err?.message?.includes('Quota') || err?.message?.includes('quota') || (err as any)?.code === 'resource-exhausted') {
-          setQuotaNotice(true);
-        }
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_admin_users');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setUsersList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
+      const cachedTxs = localStorage.getItem('bny_admin_transactions');
+      if (cachedTxs) setTransactionsList(JSON.parse(cachedTxs));
 
-    // Listen for live updates on transactions
-    const unsubscribeTx = onSnapshot(
-      query(collection(db, 'transactions'), limit(100)),
-      (snapshot) => {
-        const updatedTxs: Transaction[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            orderId: data.orderId || d.id.substring(0, 10),
-            type: data.type || 'purchase',
-            amount: data.amount || 0,
-            date: data.date || 'Today',
-            time: data.time || '',
-            status: data.status || 'Pending',
-            description: data.description || '',
-            gameId: data.gameId,
-            gameTitle: data.gameTitle,
-            gameIcon: data.gameIcon,
-            productName: data.productName,
-            productPrice: data.productPrice,
-            quantity: data.quantity,
-            playerId: data.playerId,
-            userEmail: data.userEmail || '',
-            paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
-            requirementsData: data.requirementsData || [],
-            screenshotUrl: data.screenshotUrl,
-            transactionCode: data.transactionCode || '',
-            createdAt: data.createdAt || '',
-          };
-        });
+      const cachedGames = localStorage.getItem('bny_games');
+      if (cachedGames) setGamesList(JSON.parse(cachedGames));
 
-        // Deterministic sort: newest transactions at top
-        updatedTxs.sort((a, b) => {
-          const getTime = (tx: Transaction) => {
-            if (tx.createdAt) {
-              const t = new Date(tx.createdAt).getTime();
-              if (!isNaN(t) && t > 0) return t;
-            }
-            if (tx.id && tx.id.startsWith('tx_')) {
-              const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
-              if (!isNaN(num) && num > 0) return num;
-            }
-            return 0;
-          };
-          return getTime(b) - getTime(a);
-        });
+      const cachedQrs = localStorage.getItem('bny_payment_qrs');
+      if (cachedQrs) setPaymentQRsList(JSON.parse(cachedQrs));
 
-        if (updatedTxs.length > 0) {
-          setTransactionsList(updatedTxs);
-          try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
-        } else {
-          setTransactionsList((prev) => (prev.length > 0 ? prev : []));
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('Admin live tx listener warning:', err?.message || err);
-        if (err?.message?.includes('Quota') || err?.message?.includes('quota') || (err as any)?.code === 'resource-exhausted') {
-          setQuotaNotice(true);
-        }
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_admin_transactions');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setTransactionsList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
+      const cachedBanners = localStorage.getItem('bny_banners');
+      if (cachedBanners) setBannersList(JSON.parse(cachedBanners));
 
-    // Listen for live updates on games
-    const unsubscribeGames = onSnapshot(
-      query(collection(db, 'games')),
-      (snapshot) => {
-        const updatedGames: Game[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            title: data.title || 'Untitled Game',
-            publisher: data.publisher || '',
-            category: data.category || 'action',
-            rating: data.rating || 4.8,
-            icon: data.icon || '🎮',
-            coverImg: data.coverImg || '',
-            color: data.color || 'from-indigo-600 to-purple-600',
-            bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
-            plays: data.plays || 100,
-            description: data.description || '',
-            gameType: data.gameType || 'balloon',
-            products: Array.isArray(data.products)
-              ? data.products.map((p: any, idx: number) => ({
-                  id: p.id || `prod_${idx}`,
-                  name: p.name || 'Package',
-                  price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
-                }))
-              : [],
-            requirements: Array.isArray(data.requirements) ? data.requirements : [],
-          };
-        });
+      const cachedMembers = localStorage.getItem('bny_team_members_list');
+      if (cachedMembers) setTeamMembersList(JSON.parse(cachedMembers));
 
-        if (updatedGames.length > 0) {
-          setGamesList(updatedGames);
-          try { localStorage.setItem('bny_games', JSON.stringify(updatedGames)); } catch {}
-        } else {
-          setGamesList((prev) => (prev.length > 0 ? prev : []));
-        }
-
-        setSelectedAdminGame((prev) => {
-          if (!prev) return null;
-          const updated = updatedGames.find((g) => g.id === prev.id);
-          return updated || null;
-        });
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('Admin live games listener warning:', err?.message || err);
-        if (err?.message?.includes('Quota') || err?.message?.includes('quota') || (err as any)?.code === 'resource-exhausted') {
-          setQuotaNotice(true);
-        }
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_games');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setGamesList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
-
-    // Listen for live updates on payment_qrs
-    const unsubscribePaymentQRs = onSnapshot(
-      query(collection(db, 'payment_qrs')),
-      (snapshot) => {
-        const qrs: PaymentQR[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            title: data.title || 'Payment QR Code',
-            imageUrl: data.imageUrl || '',
-            createdAt: data.createdAt,
-          };
-        });
-        if (qrs.length > 0) {
-          setPaymentQRsList(qrs);
-          try { localStorage.setItem('bny_payment_qrs', JSON.stringify(qrs)); } catch {}
-        } else {
-          setPaymentQRsList((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Admin live payment_qrs warning:', err?.message || 'Quota or network error');
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_payment_qrs');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setPaymentQRsList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
-
-    // Listen for live updates on banners
-    const unsubscribeBanners = onSnapshot(
-      query(collection(db, 'banners')),
-      (snapshot) => {
-        const bannersData: AppBanner[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            imageUrl: data.imageUrl || '',
-            redirectLink: data.redirectLink || data.redirectUrl || '',
-            createdAt: data.createdAt || '',
-          };
-        });
-        if (bannersData.length > 0) {
-          setBannersList(bannersData);
-          try { localStorage.setItem('bny_banners', JSON.stringify(bannersData)); } catch {}
-        } else {
-          setBannersList((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Admin live banners warning:', err?.message || 'Quota or network error');
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_banners');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setBannersList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
-
-    // Listen for live updates on team_members
-    const unsubscribeMembers = onSnapshot(
-      query(collection(db, 'team_members')),
-      (snapshot) => {
-        const list: TeamMember[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          email: d.data().email || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        if (list.length > 0) {
-          setTeamMembersList(list);
-          try { localStorage.setItem('bny_team_members_list', JSON.stringify(list)); } catch {}
-        } else {
-          setTeamMembersList((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Admin live team_members warning:', err?.message || 'Quota or network error');
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_team_members_list');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setTeamMembersList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
-
-    // Listen for live updates on categories
-    const unsubscribeCategories = onSnapshot(
-      query(collection(db, 'categories')),
-      (snapshot) => {
-        const list: Category[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name || '',
-          createdAt: d.data().createdAt || '',
-        }));
-        if (list.length > 0) {
-          setCategoriesList(list);
-          try { localStorage.setItem('bny_categories', JSON.stringify(list)); } catch {}
-        } else {
-          setCategoriesList((prev) => (prev.length > 0 ? prev : []));
-        }
-      },
-      (err) => {
-        console.warn('Admin live categories warning:', err?.message || 'Quota or network error');
-        setLoading(false);
-        try {
-          const cached = localStorage.getItem('bny_categories');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.length > 0) setCategoriesList((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        } catch {}
-      }
-    );
-
-    return () => {
-      unsubscribeUsers();
-      unsubscribeTx();
-      unsubscribeGames();
-      unsubscribePaymentQRs();
-      unsubscribeBanners();
-      unsubscribeMembers();
-      unsubscribeCategories();
-    };
+      const cachedCategories = localStorage.getItem('bny_categories');
+      if (cachedCategories) setCategoriesList(JSON.parse(cachedCategories));
+    } catch (e) {
+      console.warn('Error reading local cache in AdminTab:', e);
+    }
+    setLoading(false);
   }, []);
+
+  const handleSyncCloudData = async () => {
+    setLoading(true);
+    try {
+      // 1. Users (limit 50)
+      const snapUsers = await getDocs(query(collection(db, 'users'), limit(50)));
+      const fetchedUsers: UserProfile[] = snapUsers.docs.map((d) => {
+        const data = d.data();
+        return {
+          uid: d.id,
+          name: data.fullName || data.name || 'Gamer User',
+          email: data.email || '',
+          whatsapp: data.whatsapp || '',
+          avatar: '👤',
+          level: 1,
+          coins: 100,
+          walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : 0,
+          totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : 0,
+          totalGamesPlayed: 0,
+          soundEnabled: true,
+          themeColor: 'purple',
+          blocked: Boolean(data.blocked),
+        };
+      });
+      if (fetchedUsers.length > 0) {
+        setUsersList(fetchedUsers);
+        try { localStorage.setItem('bny_admin_users', JSON.stringify(fetchedUsers)); } catch {}
+      }
+
+      // 2. Transactions (limit 50)
+      const snapTx = await getDocs(query(collection(db, 'transactions'), limit(50)));
+      const updatedTxs: Transaction[] = snapTx.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          orderId: data.orderId || d.id.substring(0, 10),
+          type: data.type || 'purchase',
+          amount: data.amount || 0,
+          date: data.date || 'Today',
+          time: data.time || '',
+          status: data.status || 'Pending',
+          description: data.description || '',
+          gameId: data.gameId,
+          gameTitle: data.gameTitle,
+          gameIcon: data.gameIcon,
+          productName: data.productName,
+          productPrice: data.productPrice,
+          quantity: data.quantity,
+          playerId: data.playerId,
+          userEmail: data.userEmail || '',
+          paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
+          requirementsData: data.requirementsData || [],
+          screenshotUrl: data.screenshotUrl,
+          transactionCode: data.transactionCode || '',
+          createdAt: data.createdAt || '',
+        };
+      });
+
+      updatedTxs.sort((a, b) => {
+        const getTime = (tx: Transaction) => {
+          if (tx.createdAt) {
+            const t = new Date(tx.createdAt).getTime();
+            if (!isNaN(t) && t > 0) return t;
+          }
+          if (tx.id && tx.id.startsWith('tx_')) {
+            const num = Number(tx.id.replace('tx_order_', '').replace('tx_', ''));
+            if (!isNaN(num) && num > 0) return num;
+          }
+          return 0;
+        };
+        return getTime(b) - getTime(a);
+      });
+
+      if (updatedTxs.length > 0) {
+        setTransactionsList(updatedTxs);
+        try { localStorage.setItem('bny_admin_transactions', JSON.stringify(updatedTxs)); } catch {}
+      }
+
+      // 3. Games
+      const snapGames = await getDocs(query(collection(db, 'games')));
+      const updatedGames: Game[] = snapGames.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          title: data.title || 'Untitled Game',
+          publisher: data.publisher || '',
+          category: data.category || 'action',
+          rating: data.rating || 4.8,
+          icon: data.icon || '🎮',
+          coverImg: data.coverImg || '',
+          color: data.color || 'from-indigo-600 to-purple-600',
+          bgGradient: data.bgGradient || 'bg-gradient-to-br from-indigo-600 to-purple-700',
+          plays: data.plays || 100,
+          description: data.description || '',
+          gameType: data.gameType || 'topup',
+          products: Array.isArray(data.products)
+            ? data.products.map((p: any, idx: number) => ({
+                id: p.id || `prod_${idx}`,
+                name: p.name || 'Package',
+                price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+              }))
+            : [],
+          requirements: Array.isArray(data.requirements) ? data.requirements : [],
+        };
+      });
+
+      if (updatedGames.length > 0) {
+        setGamesList(updatedGames);
+        try { localStorage.setItem('bny_games', JSON.stringify(updatedGames)); } catch {}
+      }
+
+      setCopyToast('Cloud data synced successfully!');
+      setTimeout(() => setCopyToast(''), 2000);
+    } catch (err: any) {
+      console.warn('Sync cloud data notice:', err?.message || err);
+      setCopyToast('Data loaded from local cache');
+      setTimeout(() => setCopyToast(''), 2000);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filtered stats
   const totalUsersCount = usersList.length;
@@ -1691,15 +1526,12 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
           </div>
 
           <button
-            onClick={() => {
-              setLoading(true);
-              setTimeout(() => setLoading(false), 500);
-            }}
+            onClick={handleSyncCloudData}
             id="admin-refresh-btn"
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
+            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold px-3 py-2 rounded-xl border border-indigo-200 transition-all cursor-pointer shadow-2xs"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Refresh</span>
+            <span className="hidden sm:inline">Sync Cloud Data</span>
           </button>
         </div>
       </header>
@@ -1998,17 +1830,6 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       </AnimatePresence>
 
       <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
-        {quotaNotice && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-900 text-xs sm:text-sm font-semibold flex items-center gap-3 shadow-2xs">
-            <AlertCircle className="shrink-0 text-amber-600" size={22} />
-            <div>
-              <p className="font-bold text-amber-900 text-sm">Firebase Daily Read Quota Reached</p>
-              <p className="text-amber-800 text-xs mt-0.5">
-                Today's Firebase daily free read limit (50,000 units) was reached. All your items, users, orders, games, and banners are safely preserved in local cache and live sync will resume automatically when quota resets.
-              </p>
-            </div>
-          </div>
-        )}
         {/* Top 3 Quick Stat Cards - Only visible on Overview */}
         {activeSection === 'overview' && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
