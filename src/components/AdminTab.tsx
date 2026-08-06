@@ -1192,6 +1192,42 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
   };
 
+  const handleCopyAllProducts = () => {
+    if (!selectedAdminGame) return;
+    const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
+    const currentProds = freshGame.products || [];
+    if (currentProds.length === 0) {
+      alert('There are no products to copy.');
+      return;
+    }
+
+    const textToCopy = currentProds
+      .map((p) => `${p.name} - RS ${p.price}`)
+      .join('\n');
+
+    navigator.clipboard.writeText(textToCopy).then(
+      () => {
+        setCopyToast(`Copied ${currentProds.length} products to clipboard!`);
+        setTimeout(() => setCopyToast(''), 2500);
+      },
+      () => {
+        try {
+          const textArea = document.createElement('textarea');
+          textArea.value = textToCopy;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          setCopyToast(`Copied ${currentProds.length} products to clipboard!`);
+          setTimeout(() => setCopyToast(''), 2500);
+        } catch (e) {
+          console.error('Copy error:', e);
+          alert('Failed to copy to clipboard.');
+        }
+      }
+    );
+  };
+
   const handleDeleteAllProducts = async () => {
     if (!selectedAdminGame) return;
     const freshGame = gamesList.find((g) => g.id === selectedAdminGame.id) || selectedAdminGame;
@@ -2960,14 +2996,25 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
 
                 <div className="flex items-center gap-2">
                   {selectedAdminGame.products && selectedAdminGame.products.length > 0 && (
-                    <button
-                      onClick={handleDeleteAllProducts}
-                      id="delete-all-products-btn"
-                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-xs px-3.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
-                    >
-                      <Trash2 size={15} />
-                      <span>Delete All Products</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={handleCopyAllProducts}
+                        id="copy-all-products-btn"
+                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs px-3.5 py-2 rounded-xl border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                      >
+                        <Copy size={15} />
+                        <span>Copy All Products</span>
+                      </button>
+
+                      <button
+                        onClick={handleDeleteAllProducts}
+                        id="delete-all-products-btn"
+                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-xs px-3.5 py-2 rounded-xl border border-rose-200 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete All Products</span>
+                      </button>
+                    </>
                   )}
 
                   <button
