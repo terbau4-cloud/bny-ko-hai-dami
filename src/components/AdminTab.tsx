@@ -55,6 +55,7 @@ import { db } from '../lib/firebase';
 import {
   collection,
   getDocs,
+  getDoc,
   doc,
   updateDoc,
   setDoc,
@@ -691,18 +692,30 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
     }
   };
 
+  // Robust deposit vs order helper classification
+  const isDepositTx = (t: Transaction) => {
+    if (t.type === 'deposit') return true;
+    if (t.description && t.description.toLowerCase().includes('deposit')) return true;
+    if (t.paymentQrTitle && t.paymentQrTitle.trim().length > 0) return true;
+    if (t.transactionCode && t.transactionCode.trim().length > 0) return true;
+    return false;
+  };
+
+  const isOrderTx = (t: Transaction) => !isDepositTx(t);
+
   // Filtered stats
   const totalUsersCount = usersList.length;
-  const totalOrdersCount = transactionsList.filter((t) => t.type !== 'deposit').length;
-  const pendingOrdersList = transactionsList.filter((t) => t.type !== 'deposit' && t.status === 'Pending');
+  const totalOrdersCount = transactionsList.filter(isOrderTx).length;
+  const pendingOrdersList = transactionsList.filter((t) => isOrderTx(t) && t.status === 'Pending');
   const pendingOrdersCount = pendingOrdersList.length;
 
   const totalRevenueAmount = transactionsList
-    .filter((t) => t.type !== 'deposit' && (t.status === 'Approved' || t.status === 'Completed'))
+    .filter((t) => isOrderTx(t) && (t.status === 'Approved' || t.status === 'Completed'))
     .reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
 
-  const totalDepositsCount = transactionsList.filter((t) => t.type === 'deposit').length;
-  const pendingDepositsCount = transactionsList.filter((t) => t.type === 'deposit' && t.status === 'Pending').length;
+  const totalDepositsCount = transactionsList.filter(isDepositTx).length;
+  const pendingDepositsList = transactionsList.filter((t) => isDepositTx(t) && t.status === 'Pending');
+  const pendingDepositsCount = pendingDepositsList.length;
 
   // Overview Analytics Chart Data Helpers (7-day Chronological Trend)
   const getGraphData = () => {
@@ -736,7 +749,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
         bucket = days[6]; // Today bucket fallback
       }
 
-      if (tx.type === 'deposit') {
+      if (isDepositTx(tx)) {
         if (tx.status === 'Approved' || tx.status === 'Completed' || tx.status === 'Pending') {
           bucket.deposits += Number(tx.amount || 0);
         }
@@ -764,7 +777,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       });
 
       // If deposit, credit user wallet
-      if (tx.type === 'deposit') {
+      if (isDepositTx(tx)) {
         let targetDocId = (tx as any).userId || '';
         let currentBal = 0;
 
@@ -1704,7 +1717,62 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             </div>
           </div>
 
+          {/* Quick Header Nav Buttons */}
+          <div className="flex items-center gap-1.5">
+            {isMasterAdmin && (
+              <button
+                onClick={() => {
+                  setActiveSection('overview');
+                  setSelectedAdminGame(null);
+                }}
+                className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                  activeSection === 'overview'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <span>Overview</span>
+              </button>
+            )}
 
+            <button
+              onClick={() => {
+                setActiveSection('orders');
+                setSelectedAdminGame(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeSection === 'orders'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <span>Orders</span>
+              {pendingOrdersCount > 0 && (
+                <span className="bg-rose-500 text-white font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                  {pendingOrdersCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveSection('deposits');
+                setSelectedAdminGame(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeSection === 'deposits'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <span>Deposits</span>
+              {pendingDepositsCount > 0 && (
+                <span className="bg-amber-500 text-white font-black text-[10px] px-1.5 py-0.2 rounded-full animate-bounce">
+                  {pendingDepositsCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -2002,27 +2070,55 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
       </AnimatePresence>
 
       <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
-        {/* Top 3 Quick Stat Cards - Only visible on Overview */}
+        {/* Top 4 Quick Stat Cards - Only visible on Overview */}
         {activeSection === 'overview' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
             <div
               onClick={() => {
                 setActiveSection('users');
                 setSelectedAdminGame(null);
               }}
-              className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
+              className="p-4 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-indigo-600">
-                  Total Users
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-indigo-600">
+                  Users
                 </span>
-                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                  <Users size={20} />
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                  <Users size={16} />
                 </div>
               </div>
-              <div className="text-3xl font-black text-slate-900">{totalUsersCount}</div>
-              <p className="text-[11px] text-slate-500 font-semibold mt-1">
-                Registered gaming profiles
+              <div className="text-2xl font-black text-slate-900">{totalUsersCount}</div>
+              <p className="text-[10px] text-slate-500 font-semibold mt-1">
+                Registered profiles
+              </p>
+            </div>
+
+            <div
+              onClick={() => {
+                setActiveSection('deposits');
+                setSelectedAdminGame(null);
+              }}
+              className={`p-4 rounded-3xl border transition-all cursor-pointer relative overflow-hidden shadow-2xs ${
+                pendingDepositsCount > 0
+                  ? 'bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/30 hover:border-amber-400'
+                  : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 flex items-center gap-1">
+                  Deposits
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                  <Wallet size={16} />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-amber-700">{pendingDepositsCount}</span>
+                <span className="text-xs font-bold text-slate-500">/ {totalDepositsCount}</span>
+              </div>
+              <p className="text-[10px] text-amber-800 font-extrabold mt-1">
+                {pendingDepositsCount > 0 ? `⚠️ ${pendingDepositsCount} pending approve` : 'All approved'}
               </p>
             </div>
 
@@ -2031,19 +2127,26 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 setActiveSection('orders');
                 setSelectedAdminGame(null);
               }}
-              className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
+              className={`p-4 rounded-3xl border transition-all cursor-pointer relative overflow-hidden shadow-2xs ${
+                pendingOrdersCount > 0
+                  ? 'bg-purple-50/80 border-purple-300 ring-2 ring-purple-400/30 hover:border-purple-400'
+                  : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-purple-600">
-                  Total Orders
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-purple-700">
+                  Orders
                 </span>
-                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
-                  <ShoppingBag size={20} />
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <ShoppingBag size={16} />
                 </div>
               </div>
-              <div className="text-3xl font-black text-slate-900">{totalOrdersCount}</div>
-              <p className="text-[11px] text-slate-500 font-semibold mt-1">
-                All topups recorded
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-purple-700">{pendingOrdersCount}</span>
+                <span className="text-xs font-bold text-slate-500">/ {totalOrdersCount}</span>
+              </div>
+              <p className="text-[10px] text-purple-800 font-extrabold mt-1">
+                {pendingOrdersCount > 0 ? `📦 ${pendingOrdersCount} pending deliver` : 'All completed'}
               </p>
             </div>
 
@@ -2052,21 +2155,21 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 setActiveSection('orders');
                 setSelectedAdminGame(null);
               }}
-              className="p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
+              className="p-4 rounded-3xl border transition-all cursor-pointer relative overflow-hidden bg-white border-slate-200 hover:border-slate-300 shadow-2xs"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
-                  <DollarSign size={15} /> Total Revenue
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1">
+                  <DollarSign size={13} /> Revenue
                 </span>
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
-                  <Wallet size={20} />
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                  <Wallet size={16} />
                 </div>
               </div>
-              <div className="text-3xl font-black text-emerald-600">
+              <div className="text-xl font-black text-emerald-600 truncate">
                 RS {totalRevenueAmount}
               </div>
-              <p className="text-[11px] text-emerald-700/80 font-semibold mt-1">
-                Completed sales volume
+              <p className="text-[10px] text-emerald-700/80 font-semibold mt-1">
+                Completed topups
               </p>
             </div>
           </div>
@@ -2296,7 +2399,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 const label = status === 'Approved' ? 'Completed' : status;
                 const count = transactionsList.filter(
                   (t) =>
-                    t.type !== 'deposit' &&
+                    isOrderTx(t) &&
                     (status === 'Approved' ? t.status === 'Approved' || t.status === 'Completed' : t.status === status)
                 ).length;
 
@@ -2328,7 +2431,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             {/* List of Orders */}
             {(() => {
               const filteredOrders = transactionsList.filter((tx) => {
-                if (tx.type === 'deposit') return false;
+                if (!isOrderTx(tx)) return false;
 
                 // Status match
                 const matchesStatus =
@@ -2515,7 +2618,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
                 const label = status === 'Approved' ? 'Completed' : status;
                 const count = transactionsList.filter(
                   (t) =>
-                    t.type === 'deposit' &&
+                    isDepositTx(t) &&
                     (status === 'Approved' ? t.status === 'Approved' || t.status === 'Completed' : t.status === status)
                 ).length;
 
@@ -2547,7 +2650,7 @@ export const AdminTab: React.FC<Props> = ({ adminEmail, teamMembers = [] }) => {
             {/* List of Deposits */}
             {(() => {
               const filteredDeposits = transactionsList.filter((tx) => {
-                if (tx.type !== 'deposit') return false;
+                if (!isDepositTx(tx)) return false;
 
                 // Status match
                 const matchesStatus =

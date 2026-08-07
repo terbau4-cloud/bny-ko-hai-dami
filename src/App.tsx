@@ -24,6 +24,7 @@ import {
   limit,
   updateDoc,
   setDoc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 
@@ -99,25 +100,26 @@ export default function App() {
   }, []);
 
 
-  // Firebase Auth state change & cache-first user profile/transactions
+  // Firebase Auth state change & real-time user profile & transactions sync
   useEffect(() => {
+    let unsubUserDoc: (() => void) | null = null;
+    let unsubUserTxs: (() => void) | null = null;
+
     const unsubscribeAuth = onAuthStateChanged(
       auth,
       async (user) => {
+        if (unsubUserDoc) { unsubUserDoc(); unsubUserDoc = null; }
+        if (unsubUserTxs) { unsubUserTxs(); unsubUserTxs = null; }
+
         setAuthUser(user);
         setAuthChecking(false);
 
         if (user) {
-          let hasCachedProfile = false;
-          let hasCachedTxs = false;
-
           // Restore user profile from cache first
           try {
             const cachedProfile = localStorage.getItem(`bny_profile_${user.uid}`);
             if (cachedProfile) {
-              const parsed = JSON.parse(cachedProfile);
-              setProfile(parsed);
-              hasCachedProfile = true;
+              setProfile(JSON.parse(cachedProfile));
             } else {
               setProfile((prev) => ({
                 ...prev,
@@ -134,93 +136,104 @@ export default function App() {
               const parsed = JSON.parse(cachedTxs);
               if (Array.isArray(parsed) && parsed.length > 0) {
                 setTransactions(parsed);
-                hasCachedTxs = true;
               }
             }
           } catch {}
 
-          // Single background fetch for user document to keep balance & status synced with Admin
-          try {
-            const userDocRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(userDocRef);
-
-            if (userSnap.exists()) {
-              if (userSnap.data()?.isDeleted === true) {
-                signOut(auth).catch(() => {});
-                setAuthUser(null);
-                setProfile(INITIAL_PROFILE);
-                alert('Your account has been deleted by Admin. You have been logged out.');
-                return;
-              }
-              const data = userSnap.data();
-              const updatedProf: UserProfile = {
-                uid: user.uid,
-                name: data.fullName || data.name || user.displayName || 'BNY Gamer',
-                email: data.email || user.email || '',
-                whatsapp: data.whatsapp || '',
-                avatar: '👤',
-                level: 1,
-                coins: 100,
-                walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : parseFloat(data.walletBalance) || 0,
-                totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : parseFloat(data.totalSpent) || 0,
-                totalGamesPlayed: 0,
-                soundEnabled: true,
-                themeColor: 'purple',
-                blocked: !!data.blocked,
-              };
-              setProfile(updatedProf);
-              try { localStorage.setItem(`bny_profile_${user.uid}`, JSON.stringify(updatedProf)); } catch {}
-            } else {
-              // Auto create user doc if missing
-              try {
-                await setDoc(userDocRef, {
+          // 1. Real-time user document listener (wallet balance, blocked status, total spent)
+          const userDocRef = doc(db, 'users', user.uid);
+          unsubUserDoc = onSnapshot(
+            userDocRef,
+            async (userSnap) => {
+              if (userSnap.exists()) {
+                if (userSnap.data()?.isDeleted === true) {
+                  signOut(auth).catch(() => {});
+                  setAuthUser(null);
+                  setProfile(INITIAL_PROFILE);
+                  alert('Your account has been deleted by Admin. You have been logged out.');
+                  return;
+                }
+                const data = userSnap.data();
+                const updatedProf: UserProfile = {
                   uid: user.uid,
-                  fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
-                  email: user.email || '',
-                  whatsapp: '',
-                  walletBalance: 0,
-                  totalSpent: 0,
-                  createdAt: new Date().toISOString(),
-                }, { merge: true });
-              } catch (err) {
-                console.warn('Auto create user doc error:', err);
-              }
-            }
-          } catch (err) {
-            console.warn('Fetch user doc warning (using local profile):', err);
-          }
-
-          // Single fetch for user transactions ONLY if transactions are not cached
-          if (!hasCachedTxs) {
-            try {
-              const q = query(collection(db, 'transactions'), where('userId', '==', user.uid), limit(30));
-              const snapshot = await getDocs(q);
-              const loadedTxs: Transaction[] = snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                return {
-                  id: docSnap.id,
-                  orderId: data.orderId,
-                  type: data.type || 'purchase',
-                  amount: data.amount || 0,
-                  date: data.date || 'Today',
-                  time: data.time || '',
-                  status: data.status || 'Pending',
-                  description: data.description || '',
-                  gameTitle: data.gameTitle,
-                  gameIcon: data.gameIcon,
-                  gameCoverImg: data.gameCoverImg,
-                  productName: data.productName,
-                  productPrice: data.productPrice,
-                  quantity: data.quantity,
-                  playerId: data.playerId,
-                  userEmail: data.userEmail || '',
-                  paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
-                  requirementsData: data.requirementsData || [],
-                  screenshotUrl: data.screenshotUrl,
-                  transactionCode: data.transactionCode || '',
-                  createdAt: data.createdAt || '',
+                  name: data.fullName || data.name || user.displayName || 'BNY Gamer',
+                  email: data.email || user.email || '',
+                  whatsapp: data.whatsapp || '',
+                  avatar: '👤',
+                  level: 1,
+                  coins: 100,
+                  walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : parseFloat(data.walletBalance) || 0,
+                  totalSpent: typeof data.totalSpent === 'number' ? data.totalSpent : parseFloat(data.totalSpent) || 0,
+                  totalGamesPlayed: 0,
+                  soundEnabled: true,
+                  themeColor: 'purple',
+                  blocked: !!data.blocked,
                 };
-              });
+                setProfile(updatedProf);
+                try { localStorage.setItem(`bny_profile_${user.uid}`, JSON.stringify(updatedProf)); } catch {}
+              } else {
+                // Auto create user doc if missing
+                try {
+                  await setDoc(
+                    userDocRef,
+                    {
+                      uid: user.uid,
+                      fullName: user.displayName || user.email?.split('@')[0] || 'BNY Gamer',
+                      email: user.email || '',
+                      whatsapp: '',
+                      walletBalance: 0,
+                      totalSpent: 0,
+                      createdAt: new Date().toISOString(),
+                    },
+                    { merge: true }
+                  );
+                } catch (err) {
+                  console.warn('Auto create user doc error:', err);
+                }
+              }
+            },
+            (err) => console.warn('User doc snapshot error:', err)
+          );
+
+          // 2. Real-time transactions listener (Deposits & Purchase Orders)
+          const txsQuery = query(collection(db, 'transactions'), limit(200));
+          unsubUserTxs = onSnapshot(
+            txsQuery,
+            (snapshot) => {
+              const loadedTxs: Transaction[] = snapshot.docs
+                .map((docSnap) => {
+                  const data = docSnap.data();
+                  return {
+                    id: docSnap.id,
+                    userId: data.userId || '',
+                    orderId: data.orderId,
+                    type: data.type || (data.transactionCode ? 'deposit' : 'purchase'),
+                    amount: typeof data.amount === 'number' ? data.amount : parseFloat(data.amount) || 0,
+                    date: data.date || 'Today',
+                    time: data.time || '',
+                    status: data.status || 'Pending',
+                    description: data.description || '',
+                    gameId: data.gameId,
+                    gameTitle: data.gameTitle,
+                    gameIcon: data.gameIcon,
+                    gameCoverImg: data.gameCoverImg,
+                    productName: data.productName,
+                    productPrice: data.productPrice,
+                    quantity: data.quantity,
+                    playerId: data.playerId,
+                    userEmail: data.userEmail || '',
+                    paymentQrTitle: data.paymentQrTitle || data.paymentMethod || '',
+                    requirementsData: data.requirementsData || [],
+                    screenshotUrl: data.screenshotUrl,
+                    transactionCode: data.transactionCode || '',
+                    createdAt: data.createdAt || '',
+                  };
+                })
+                .filter((tx) => {
+                  if (tx.userId && tx.userId === user.uid) return true;
+                  if (user.email && tx.userEmail && tx.userEmail.toLowerCase() === user.email.toLowerCase()) return true;
+                  return false;
+                });
 
               loadedTxs.sort((a, b) => {
                 const getTime = (tx: Transaction) => {
@@ -237,14 +250,11 @@ export default function App() {
                 return getTime(b) - getTime(a);
               });
 
-              if (loadedTxs.length > 0) {
-                setTransactions(loadedTxs);
-                try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
-              }
-            } catch (err) {
-              console.warn('Fetch user transactions warning (using local transactions):', err);
-            }
-          }
+              setTransactions(loadedTxs);
+              try { localStorage.setItem('bny_transactions', JSON.stringify(loadedTxs)); } catch {}
+            },
+            (err) => console.warn('User transactions snapshot error:', err)
+          );
         } else {
           setProfile(INITIAL_PROFILE);
         }
@@ -255,7 +265,11 @@ export default function App() {
       }
     );
 
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeAuth();
+      if (unsubUserDoc) unsubUserDoc();
+      if (unsubUserTxs) unsubUserTxs();
+    };
   }, []);
 
   // Fetch games ONCE only if local storage is completely empty
